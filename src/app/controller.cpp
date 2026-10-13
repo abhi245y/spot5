@@ -164,6 +164,11 @@ void Controller::handle_commands()
         case Command::forget_login:
             // Delete the saved login and end the session; connecting again
             // then finds nothing saved and waits for the phone (Pairing).
+            std::remove(paths::kHome.c_str()); // that account's Home
+            {
+                std::scoped_lock guard(lock_);
+                status_.home = nullptr;
+            }
             if (std::remove(paths::kCredentials.c_str()) == 0)
                 hui::sys::log("[APP] saved login forgotten");
             else
@@ -346,12 +351,15 @@ void Controller::step_browser()
     if (request)
         browser.resolve(*request);
 
-    // Page in the rest of a long context before the queue runs dry.
-    if (!rest_.empty())
+    // Page in the rest of a long context before the queue runs dry. The
+    // locked count is checked first; the context only when it is low.
+    if (!rest_.empty() && session_->tracks_remaining() <= kQueueLowWater)
     {
         if (session_->context_uri() != rest_context_)
+        {
             rest_.clear(); // the phone started something else
-        else if (session_->tracks_remaining() <= kQueueLowWater)
+        }
+        else
         {
             const std::size_t count = std::min(rest_.size(), spotify::Session::kQueueWindow);
             session_->append({rest_.begin(), rest_.begin() + static_cast<std::ptrdiff_t>(count)});

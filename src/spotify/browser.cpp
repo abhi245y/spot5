@@ -165,15 +165,30 @@ void Browser::run()
             jobs_.pop_front();
             working_ = true;
         }
-        if (job.refresh)
+        // Replies are network input: a surprise in one must not end the app.
+        try
         {
-            fetch_home();
+            if (job.refresh)
+            {
+                fetch_home();
+            }
+            else
+            {
+                Resolved resolved = fetch_tracks(job.play);
+                std::scoped_lock guard(lock_);
+                resolved_ = std::move(resolved);
+            }
         }
-        else
+        catch (const std::exception &e)
         {
-            Resolved resolved = fetch_tracks(job.play);
-            std::scoped_lock guard(lock_);
-            resolved_ = std::move(resolved);
+            hui::sys::log("[HOME] %s failed: %s", job.refresh ? "Home" : "resolve", e.what());
+            if (!job.refresh)
+            {
+                Resolved failed;
+                failed.error = "Couldn't load it. Try again in a moment.";
+                std::scoped_lock guard(lock_);
+                resolved_ = std::move(failed);
+            }
         }
         std::scoped_lock guard(lock_);
         working_ = false;
@@ -208,6 +223,13 @@ void Browser::fetch_home()
         }
     for (std::size_t first = 0; first < wanted.size(); first += kTraitsBatch)
     {
+        {
+            std::scoped_lock guard(lock_);
+            if (stop_)
+                return; // the session is closing
+        }
+        if (first > 0)
+            hui::sys::sleep_us(300000); // spaced out, like a person scrolling
         const std::vector<std::string> batch(
             wanted.begin() + static_cast<std::ptrdiff_t>(first),
             wanted.begin() + static_cast<std::ptrdiff_t>(std::min(wanted.size(), first + kTraitsBatch)));
