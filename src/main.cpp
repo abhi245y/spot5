@@ -68,6 +68,39 @@ constexpr const char *kTrackGid = "93bc414a606747b2b612491ef83d5a3e";
 constexpr int kPlaySeconds = 30;
 constexpr int kGrain = 256;
 
+// Spotify track id (base62, 22 chars; a full open.spotify.com/track/ link or
+// spotify:track: URI also works) -> 16-byte gid. Empty if malformed.
+std::vector<uint8_t> gid_from_track(std::string id)
+{
+    static const std::string digits =
+        "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    if (id.size() != 22)
+    {
+        std::size_t at = id.rfind("track");
+        if (at != std::string::npos)
+            id = id.substr(at + 6); // after "track/" or "track:"
+        id = id.substr(0, id.find('?'));
+    }
+    std::vector<uint8_t> gid(16, 0);
+    if (id.size() != 22)
+        return {};
+    for (char c : id)
+    {
+        std::size_t d = digits.find(c);
+        if (d == std::string::npos)
+            return {};
+        // gid = gid * 62 + d, big-endian
+        unsigned carry = static_cast<unsigned>(d);
+        for (int i = 15; i >= 0; i--)
+        {
+            unsigned v = gid[i] * 62u + carry;
+            gid[i] = static_cast<uint8_t>(v & 0xff);
+            carry = v >> 8;
+        }
+    }
+    return gid;
+}
+
 // tremor reads the decrypted stream through these, as cspot's TrackPlayer does.
 // Time spent in CDN reads (network + decrypt) vs total, to tell a slow
 // network from a slow decoder. Only the decoder thread touches these.
@@ -355,8 +388,20 @@ void run()
     // 5. Audio file, key and CDN URL, stepped like TrackQueue::processTrack
     ctx->config.audioFormat = AudioFormat_OGG_VORBIS_320;
     cspot::TrackReference ref;
-    for (std::size_t i = 0; i < 32; i += 2)
-        ref.gid.push_back(static_cast<uint8_t>(std::stoi(std::string(kTrackGid + i, 2), nullptr, 16)));
+    std::string track_id = config.value("track", std::string());
+    if (!track_id.empty())
+    {
+        ref.gid = gid_from_track(track_id);
+        if (ref.gid.empty())
+        {
+            trace("[LOGIN] step5: config \"track\" is not a Spotify track link or id");
+            return;
+        }
+    }
+    else
+        for (std::size_t i = 0; i < 32; i += 2)
+            ref.gid.push_back(
+                static_cast<uint8_t>(std::stoi(std::string(kTrackGid + i, 2), nullptr, 16)));
     auto track = std::make_shared<cspot::QueuedTrack>(ref, ctx);
     Track pb_track = Track_init_zero;
     Episode pb_episode = Episode_init_zero;
