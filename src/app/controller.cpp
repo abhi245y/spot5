@@ -182,10 +182,13 @@ void Controller::handle_commands()
         case Command::forget_login:
             // Delete the saved login and end the session; connecting again
             // then finds nothing saved and waits for the phone (Pairing).
-            std::remove(paths::kHome.c_str()); // that account's Home
+            std::remove(paths::kHome.c_str()); // that account's Home and Library
+            std::remove(paths::kLibrary.c_str());
             {
                 std::scoped_lock guard(lock_);
                 status_.home = nullptr;
+                status_.library = nullptr;
+                status_.artist = nullptr;
             }
             if (std::remove(paths::kCredentials.c_str()) == 0)
                 hui::sys::log("[APP] saved login forgotten");
@@ -214,6 +217,13 @@ void Controller::handle_commands()
             std::remove(paths::kHome.c_str());
             std::remove(paths::kLibrary.c_str());
             library_asked_ms_ = 0; // fetched again with its art
+            if (session_)
+                session_->browser().forget_library();
+            {
+                std::scoped_lock guard(lock_);
+                status_.library = nullptr;
+                status_.artist = nullptr;
+            }
             details_.clear();
             described_.clear();
             if (state == State::Ready)
@@ -409,8 +419,10 @@ void Controller::step_browser()
             status_.artist = std::move(artist);
         }
     }
-    // Library after the launch is done: hourly, or never fetched yet.
-    if (status().step == screens::Step::done &&
+    // Library a minute after the launch is done (Home's calls first, so the
+    // two never burst together), then hourly.
+    constexpr std::int64_t kLibraryAfterLaunchMs = 60 * 1000;
+    if (status().step == screens::Step::done && now_ms() - artwork_since_ms_ > kLibraryAfterLaunchMs &&
         wall_ms() - browser.library_fetched_ms() > kHomeMaxAgeMs && !browser.busy() &&
         (library_asked_ms_ == 0 || now_ms() - library_asked_ms_ > kRetryGapMs))
     {

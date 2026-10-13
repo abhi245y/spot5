@@ -197,6 +197,8 @@ void Shell::update(const Model &model, const InputFrame &input, float dt, ui::Fe
         status = model.busy;
     else if (model.home_loading && hub)
         status = "Updating Home";
+    else if (model.library_loading && current_ == Id::library)
+        status = "Updating Library";
     if (current_ == Id::launch)
         status.clear(); // the loader says it all
     if (!status.empty() && status != status_text_)

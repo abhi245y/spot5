@@ -204,6 +204,15 @@ void Browser::artist(const std::string &uri)
     wake_.notify_all();
 }
 
+void Browser::forget_library()
+{
+    std::scoped_lock guard(lock_);
+    library_ = nullptr;
+    library_fetched_ms_ = 0;
+    // library_kept_ belongs to the worker; a fresh fetch replaces it, and its
+    // wide art is still valid (only URLs).
+}
+
 std::shared_ptr<const screens::Library> Browser::take_library()
 {
     std::scoped_lock guard(lock_);
@@ -435,8 +444,8 @@ void Browser::fetch_library()
     {
         if (const auto found = wide.find(item.card.uri); found != wide.end())
             item.card.wide = found->second;
-        else if (item.kind != screens::LibraryItem::Kind::collection)
-            wanted.push_back(item.card.uri);
+        else if (item.kind == screens::LibraryItem::Kind::playlist || item.kind == screens::LibraryItem::Kind::album)
+            wanted.push_back(item.card.uri); // artists get their header with their page
     }
     home::Entities art;
     for (std::size_t first = 0; first < wanted.size(); first += kTraitsBatch)

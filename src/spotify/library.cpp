@@ -215,11 +215,17 @@ bool parse_artist(const std::string &reply, screens::ArtistPage &page)
         if (artist.contains("stats") && artist["stats"].contains("monthlyListeners") &&
             artist["stats"]["monthlyListeners"].is_number())
             page.listeners = with_commas(artist["stats"]["monthlyListeners"].get<long long>()) + " monthly listeners";
-        if (artist.at("profile").contains("biography") && artist["profile"]["biography"].is_object())
+        if (artist["profile"].contains("biography") && artist["profile"]["biography"].is_object())
             page.biography = drawable(artist["profile"]["biography"].value("text", ""));
 
-        const json &discography = artist.at("discography");
-        for (const json &entry : discography.at("topTracks").at("items"))
+        // Smaller artists may lack any of these: a page without them is
+        // still a page.
+        const json empty_object = json::object();
+        const json &discography = artist.contains("discography") ? artist["discography"] : empty_object;
+        const json top = discography.contains("topTracks") && discography["topTracks"].contains("items")
+                             ? discography["topTracks"]["items"]
+                             : json::array();
+        for (const json &entry : top)
         {
             const json &track = entry.at("track");
             screens::TrackRow row;
@@ -242,9 +248,9 @@ bool parse_artist(const std::string &reply, screens::ArtistPage &page)
                 page.top.push_back(std::move(row));
         }
         const auto releases = [&](const char *group, const char *type, std::vector<screens::Card> &out) {
-            if (!discography.contains(group))
+            if (!discography.contains(group) || !discography[group].contains("items"))
                 return;
-            for (const json &entry : discography[group].at("items"))
+            for (const json &entry : discography[group]["items"])
                 if (entry.contains("releases") && !entry["releases"]["items"].empty())
                     out.push_back(release_card(entry["releases"]["items"][0], type));
         };

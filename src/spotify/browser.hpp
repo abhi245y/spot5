@@ -68,6 +68,8 @@ class Browser
     void refresh_library();
     // An artist's page (take_artist()).
     void artist(const std::string &uri);
+    // Clear cache: forget the library kept here, so the next check fetches it.
+    void forget_library();
 
     // The newest page, once (after construction from the cache, and after
     // each refresh); null when nothing new.

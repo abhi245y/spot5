@@ -113,6 +113,7 @@ void playing(Model &m, const char *id, const char *title, const char *artist, co
 struct TestCover
 {
     std::uint32_t texture = 0;
+    int width = 0, height = 0;
     screens::style::AlbumPalette palette;
 };
 TestCover g_covers[2];
@@ -242,8 +243,8 @@ screens::Art preview_art(const std::string &url)
     static std::map<std::string, screens::Art> loaded;
     if (auto found = loaded.find(url); found != loaded.end())
         return found->second;
-    screens::Art art{g_covers[std::hash<std::string>{}(url) % 2].texture,
-                     g_covers[std::hash<std::string>{}(url) % 2].palette};
+    const TestCover &fallback = g_covers[std::hash<std::string>{}(url) % 2];
+    screens::Art art{fallback.texture, fallback.palette, fallback.width, fallback.height};
     std::string data;
     if (save::read_file(cover_file(url), &data))
     {
@@ -449,6 +450,8 @@ int main(int argc, char **argv)
                     &w, &h, &n, 4))
             {
                 g_covers[i].texture = renderer.batch().create_texture(w, h, px);
+                g_covers[i].width = w;
+                g_covers[i].height = h;
                 g_covers[i].palette = screens::style::palette_from_pixels(px, w, h);
                 stbi_image_free(px);
             }
