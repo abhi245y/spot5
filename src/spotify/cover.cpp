@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
+#include <cstdlib>
 #include <exception>
 
 #include "HTTPClient.h"
@@ -18,6 +19,7 @@
 #include "webp/decode.h"
 
 extern "C" std::size_t hui_heap_capacity(void); // runtime/app_heap.c
+extern "C" void hui_heap_stats(std::size_t *live, std::size_t *peak, std::size_t *blocks, std::size_t *failures);
 
 namespace spotify
 {
@@ -26,13 +28,42 @@ namespace
 {
 
 constexpr std::int64_t kRetryAfterMs = 30000; // a failed download, asked again
-// stb_image needs ~7 bytes a pixel while decoding. Original-size covers
-// above this side fall back to the 640 px one: 4096 (decoded, then halved)
-// when the app heap is 256 MB or more, else 2048. Only one big image decodes
-// at a time (all loaders share the lock).
-int max_decode_side()
+// What decoding costs, worked out before anything is allocated (a failed
+// allocation ends the app on this console): stb_image keeps the output
+// (4 bytes a pixel) and the colour planes (3), plus 16-bit coefficients for
+// progressive JPEGs (6); we add the halved copy. An original-size cover that
+// would need more than a third of the heap falls back to the 640 px one
+// (the app itself peaked at ~60 MB of 256: a third still leaves ~100 MB).
+// Only one big image decodes at a time (all loaders share the lock).
+bool is_progressive_jpeg(const std::vector<std::uint8_t> &bytes)
 {
-    return hui_heap_capacity() >= (256u << 20) ? 4096 : 2048;
+    // Walk the JPEG markers up to the frame header: SOF2 means progressive.
+    std::size_t i = 2;
+    while (i + 4 <= bytes.size() && bytes[i] == 0xFF)
+    {
+        const std::uint8_t marker = bytes[i + 1];
+        if (marker == 0xC2)
+            return true;
+        if (marker == 0xC0 || marker == 0xC1 || marker == 0xDA)
+            return false;
+        i += 2 + ((static_cast<std::size_t>(bytes[i + 2]) << 8) | bytes[i + 3]);
+    }
+    return false;
+}
+
+bool fits_decode_budget(long long width, long long height, bool progressive)
+{
+    constexpr long long kMargin = 48ll << 20; // for everything else running meanwhile
+    const long long pixels = width * height;
+    const long long cost = pixels * (4 + 3 + (progressive ? 6 : 0)) + pixels * 4; // + our copy
+    std::size_t live = 0;
+    hui_heap_stats(&live, nullptr, nullptr, nullptr);
+    const long long capacity = static_cast<long long>(hui_heap_capacity());
+    const bool fits = cost <= capacity / 3 && cost <= capacity - static_cast<long long>(live) - kMargin;
+    if (!fits)
+        hui::sys::log("[APP] cover %lldx%lld needs %lld MB, heap %zu of %lld MB in use: using the smaller one",
+                      width, height, cost >> 20, live >> 20, capacity >> 20);
+    return fits;
 }
 constexpr int kBigPixels = 1000 * 1000;
 std::mutex g_big_decode;
@@ -66,14 +97,24 @@ bool is_webp(const std::vector<std::uint8_t> &bytes)
 
 // Copies decoded RGBA into `out`, halving (2x2 box filter) while it is
 // larger than max_side; reads the decoder's buffer directly (no full copy).
-void take_pixels(const std::uint8_t *pixels, int width, int height, int max_side, Cover &out)
+// Returns false (and leaves `out` empty) when there is no memory for it.
+bool take_pixels(const std::uint8_t *pixels, int width, int height, int max_side, Cover &out)
 {
     int step = 1;
     while (width / step > max_side || height / step > max_side)
         step *= 2;
+    const std::size_t size = static_cast<std::size_t>(width / step) * (height / step) * 4;
+    // A failed C++ allocation ends the app on this console; malloc can say no.
+    void *room = std::malloc(size);
+    if (!room)
+    {
+        hui::sys::log("[APP] cover: no memory for %zu MB", size >> 20);
+        return false;
+    }
+    std::free(room);
     out.width = width / step;
     out.height = height / step;
-    out.rgba.resize(static_cast<std::size_t>(out.width) * out.height * 4);
+    out.rgba.resize(size);
     const int area = step * step;
     for (int y = 0; y < out.height; ++y)
         for (int x = 0; x < out.width; ++x)
@@ -86,6 +127,7 @@ void take_pixels(const std::uint8_t *pixels, int width, int height, int max_side
                 out.rgba[(static_cast<std::size_t>(y) * out.width + x) * 4 + c] =
                     static_cast<std::uint8_t>((sum + area / 2) / area);
             }
+    return true;
 }
 
 } // namespace
@@ -265,7 +307,7 @@ void CoverLoader::run()
         const bool webp = is_webp(bytes);
         if (!bytes.empty() && !webp &&
             stbi_info_from_memory(bytes.data(), static_cast<int>(bytes.size()), &info_w, &info_h, &info_n) &&
-            std::max(info_w, info_h) > max_decode_side())
+            !fits_decode_budget(info_w, info_h, is_progressive_jpeg(bytes)))
         {
             const std::size_t at = url.find("ab67616d000082c1");
             if (at != std::string::npos)
@@ -292,6 +334,7 @@ void CoverLoader::run()
 
         Cover cover;
         cover.url = url;
+        bool short_of_memory = false;
         {
             const bool big = static_cast<long long>(info_w) * info_h > kBigPixels;
             std::unique_lock<std::mutex> one_at_a_time(g_big_decode, std::defer_lock);
@@ -302,7 +345,7 @@ void CoverLoader::run()
             {
                 if (std::uint8_t *pixels = WebPDecodeRGBA(bytes.data(), bytes.size(), &width, &height))
                 {
-                    take_pixels(pixels, width, height, kMaxSide, cover);
+                    short_of_memory = !take_pixels(pixels, width, height, kMaxSide, cover);
                     WebPFree(pixels);
                 }
             }
@@ -311,10 +354,17 @@ void CoverLoader::run()
                 if (std::uint8_t *pixels = stbi_load_from_memory(bytes.data(), static_cast<int>(bytes.size()),
                                                                  &width, &height, &channels, 4))
                 {
-                    take_pixels(pixels, width, height, kMaxSide, cover);
+                    short_of_memory = !take_pixels(pixels, width, height, kMaxSide, cover);
                     stbi_image_free(pixels);
                 }
             }
+        }
+        if (short_of_memory)
+        {
+            std::scoped_lock guard(lock_);
+            finished(url);
+            retry_at_ms_[url] = now_ms() + kRetryAfterMs; // later, when memory is back
+            continue;
         }
         if (cover.rgba.empty())
         {
