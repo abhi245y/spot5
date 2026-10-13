@@ -4,7 +4,7 @@
 //   launch  --(ready, loader done)--> home or now playing   iris
 //   home   <--(a track arrives / ends)--> now playing        slide
 //   any    --(connection error)--> launch (shows the error)  through black
-//   any   <--(Options / Back)--> Control Room                  slide
+//   any   <--(touchpad / Back)--> Control Room                 slide
 // Overlay on every screen: a "Reconnecting" pill.
 
 #pragma once

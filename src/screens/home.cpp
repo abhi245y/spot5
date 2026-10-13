@@ -160,7 +160,7 @@ class Home final : public Screen
     void draw_hints(gfx::DrawList &list) const
     {
         list.push_opacity(tween::stagger(age_, 6, 0.08f, 0.6f));
-        const ui::Hint hints[] = {{ui::Button::options, "Quit"}};
+        const ui::Hint hints[] = {{ui::Button::touchpad, "Settings"}};
         ui::draw_hints(list, context_.fonts, ui::GlyphStyle::dark(), hints, 1, kRight, true);
         list.pop_opacity();
     }

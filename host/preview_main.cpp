@@ -166,7 +166,7 @@ const std::vector<Beat> &script()
         {1.5f, [](Model &m) { m.connection = Connection::reconnecting; }, 0, "12-reconnecting"},
         {0.5f, [](Model &m) { m.connection = Connection::ready; }},
         // Control Room: Options opens it over Now Playing.
-        {1.0f, nullptr, action_bit(Action::menu), "13-control-room"},
+        {1.0f, nullptr, action_bit(Action::touch), "13-control-room"},
         {0.4f, nullptr, action_bit(Action::confirm)},          // into Playback's rows
         {0.3f, nullptr, 0, nullptr, Direction::down},           // Volume
         {0.25f, nullptr, 0, nullptr, Direction::left},          // 9

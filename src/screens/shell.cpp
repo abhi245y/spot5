@@ -101,8 +101,8 @@ void Shell::update(const Model &model, const InputFrame &input, float dt, ui::Fe
             go(next, Move::slide, 0.6f);
     }
 
-    // Options opens Control Room from any screen; it closes itself.
-    if (!menu_open_ && input.is_pressed(Action::menu))
+    // The touchpad opens Control Room from any screen; it closes itself.
+    if (!menu_open_ && input.is_pressed(Action::touch))
     {
         menu_open_ = true;
         feedback.play(audio::Cue::modal_open);

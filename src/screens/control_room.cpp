@@ -1,4 +1,4 @@
-// ps5-spotify - Control Room: the app's settings, opened with Options.
+// ps5-spotify - Control Room: the app's settings, opened with the touchpad.
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // Adapted from ps5-homebrew-ui src/concepts/settings.cpp (GPL-3.0-or-later,
@@ -536,7 +536,7 @@ class ControlRoom final : public Screen
 
     void update_screen(const InputFrame &input, ui::Feedback &feedback)
     {
-        if (input.is_pressed(Action::menu))
+        if (input.is_pressed(Action::touch))
         {
             close_ = true;
             feedback.play(audio::Cue::modal_close);

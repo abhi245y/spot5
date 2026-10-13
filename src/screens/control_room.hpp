@@ -1,4 +1,4 @@
-// ps5-spotify - Control Room: the app's settings, opened with Options.
+// ps5-spotify - Control Room: the app's settings, opened with the touchpad.
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // ps5-homebrew-ui's "Control Room" design (src/concepts/settings.cpp) with
@@ -19,7 +19,7 @@ namespace screens
 std::unique_ptr<Screen> make_control_room(Context &context);
 
 // True once the user asked to leave Control Room (Back on the rail, or
-// Options); the shell then closes it and calls enter() the next time.
+// the touchpad); the shell then closes it and calls enter() the next time.
 bool control_room_wants_close(const Screen &room);
 
 } // namespace screens

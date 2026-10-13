@@ -388,12 +388,12 @@ class Launch final : public Screen
         if (failed)
         {
             const ui::Hint hints[] = {{ui::Button::cross, "Try again"},
-                                      {ui::Button::options, "Quit"}};
+                                      {ui::Button::touchpad, "Settings"}};
             ui::draw_hints(list, fonts, glyphs, hints, 2, kRight, true);
         }
         else
         {
-            const ui::Hint hints[] = {{ui::Button::options, "Quit"}};
+            const ui::Hint hints[] = {{ui::Button::touchpad, "Settings"}};
             ui::draw_hints(list, fonts, glyphs, hints, 1, kRight, true);
         }
         list.pop_opacity();
