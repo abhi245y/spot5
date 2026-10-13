@@ -87,6 +87,7 @@ struct Beat
     std::function<void(Model &)> change;
     std::uint32_t press = 0;
     const char *capture = nullptr;
+    Direction nav = Direction::none;
 };
 
 void playing(Model &m, const char *id, const char *title, const char *artist, const char *album,
@@ -164,8 +165,30 @@ const std::vector<Beat> &script()
         {2.0f, nullptr, 0, "11-playing-long-title"},
         {1.5f, [](Model &m) { m.connection = Connection::reconnecting; }, 0, "12-reconnecting"},
         {0.5f, [](Model &m) { m.connection = Connection::ready; }},
-        {1.0f, nullptr, action_bit(Action::menu), "13-quit-dialog"},
-        {0.6f, nullptr, action_bit(Action::back)},
+        // Control Room: Options opens it over Now Playing.
+        {1.0f, nullptr, action_bit(Action::menu), "13-control-room"},
+        {0.4f, nullptr, action_bit(Action::confirm)},          // into Playback's rows
+        {0.3f, nullptr, 0, nullptr, Direction::down},           // Volume
+        {0.25f, nullptr, 0, nullptr, Direction::left},          // 9
+        {0.25f, nullptr, 0, nullptr, Direction::left},          // 8
+        {1.3f, nullptr, 0, "14-volume-saved"},                  // the toast says Saved
+        {0.3f, nullptr, action_bit(Action::back)},              // back to the rail
+        {0.6f, nullptr, 0, "15-device", Direction::down},       // Device
+        {0.3f, nullptr, action_bit(Action::confirm)},           // into its row
+        {0.8f, nullptr, action_bit(Action::confirm), "16-rename-keyboard"},
+        {0.5f, nullptr, action_bit(Action::back)},              // cancel the sheet
+        {0.3f, nullptr, action_bit(Action::back)},              // back to the rail
+        {0.3f, nullptr, 0, nullptr, Direction::down},           // Account
+        {0.6f, nullptr, 0, "17-account", Direction::none},
+        {0.3f, nullptr, 0, nullptr, Direction::down},           // Display
+        {0.3f, nullptr, 0, nullptr, Direction::down},           // About
+        {0.8f, nullptr, 0, "18-about"},
+        {0.3f, nullptr, 0, nullptr, Direction::down},           // Quit
+        {0.3f, nullptr, action_bit(Action::confirm)},           // into its row
+        {0.8f, nullptr, action_bit(Action::confirm), "19-quit-dialog"},
+        {0.5f, nullptr, action_bit(Action::back)},              // Cancel
+        {0.3f, nullptr, action_bit(Action::back)},              // rail
+        {0.8f, nullptr, action_bit(Action::back), "20-back-to-playing"},
     };
     return beats;
 }
@@ -219,9 +242,12 @@ int main(int argc, char **argv)
     if (!target.create(kWidth, kHeight, 1))
         return 1;
 
-    screens::Context context{fonts, false};
+    screens::Settings settings;
+    screens::Context context{fonts, settings};
     screens::Shell shell(context);
     Model model;
+    model.username = "abhi245y";
+    model.about = {"01.000.000", "ps5@555ea3c", "192.168.1.2"};
     std::vector<unsigned char> pixels(static_cast<std::size_t>(kWidth) * kHeight * 4);
     constexpr float kDt = 1.0f / 60.0f;
 
@@ -235,7 +261,10 @@ int main(int argc, char **argv)
             InputFrame input;
             input.connected = true;
             if (i == 0)
+            {
                 input.pressed = beat.press;
+                input.nav = beat.nav;
+            }
             ui::Feedback feedback;
             std::vector<Command> commands;
             shell.update(model, input, kDt, feedback, commands);

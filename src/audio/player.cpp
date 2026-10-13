@@ -110,6 +110,13 @@ Player::~Player()
     }
 }
 
+void Player::set_volume(int level, bool follow_phone)
+{
+    const float step = static_cast<float>(std::clamp(level, 0, 10)) / 10.0f;
+    local_gain_ = step * step; // 40 log10(step) dB, as Control Room's meter shows
+    follow_phone_ = follow_phone;
+}
+
 NowPlaying Player::now_playing()
 {
     std::scoped_lock guard(lock_);
@@ -206,11 +213,13 @@ void Player::output_loop()
             sceKernelUsleep(10000);
             continue;
         }
-        // Software volume (spirc sends 0..65535).
-        int volume = volume_;
-        if (volume < 65535)
+        // Software volume: the phone's (spirc, 0..65535) unless ignored,
+        // times this console's own level.
+        const float phone = follow_phone_ ? static_cast<float>(volume_) / 65535.0f : 1.0f;
+        const float gain = phone * local_gain_;
+        if (gain < 0.9999f)
             for (auto &s : grain)
-                s = static_cast<int16_t>(s * volume / 65535);
+                s = static_cast<int16_t>(static_cast<float>(s) * gain);
         sceAudioOutOutput(handle_, grain);
     }
     sceAudioOutOutput(handle_, nullptr);

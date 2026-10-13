@@ -51,6 +51,10 @@ class Player
     bool ok() const { return handle_ >= 0; }
     NowPlaying now_playing();
 
+    // This console's own level (0..10, perceptual: -4 dB per step near the
+    // top) on top of the phone's volume, or alone when follow_phone is off.
+    void set_volume(int level, bool follow_phone);
+
   private:
     struct Chunk
     {
@@ -76,6 +80,8 @@ class Player
     std::string stream_track_, play_track_;
     bool paused_ = true, playlist_end_ = false;
     std::atomic<int> volume_{65535}; // spirc volume, 0..65535
+    std::atomic<float> local_gain_{1.0f};
+    std::atomic<bool> follow_phone_{true};
     NowPlaying now_playing_;
     // Position of what is heard: base + frames played since it was set.
     // PLAYBACK_START fires when the next track starts *streaming* (seconds

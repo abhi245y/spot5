@@ -40,7 +40,7 @@ class Home final : public Screen
     {
         age_ += dt;
         clock_ += dt;
-        if (!context_.reduced_motion)
+        if (!context_.settings.reduced_motion)
             drift_ += dt;
     }
 
@@ -89,7 +89,7 @@ class Home final : public Screen
     {
         const ui::Fonts &fonts = context_.fonts;
         const float in = tween::stagger(age_, 1, 0.08f, 0.7f);
-        const float bob = context_.reduced_motion ? 0.0f : std::sin(clock_ * 0.8f) * 6.0f;
+        const float bob = context_.settings.reduced_motion ? 0.0f : std::sin(clock_ * 0.8f) * 6.0f;
         const Rect art{kCard.x + 40.0f * (1.0f - in), kCard.y + bob, kCard.w, kCard.h};
         list.push_opacity(in);
         list.glow(art.inset(30), 60, 90, kGreen.with_alpha(0.28f));
@@ -102,7 +102,7 @@ class Home final : public Screen
         {
             // Each ring grows outward and fades: sound leaving the speaker.
             const float phase =
-                context_.reduced_motion ? 0.25f * i : std::fmod(clock_ * 0.35f + 0.25f * i, 1.0f);
+                context_.settings.reduced_motion ? 0.25f * i : std::fmod(clock_ * 0.35f + 0.25f * i, 1.0f);
             list.ring(cx, cy, 60.0f + 170.0f * phase, 3.0f,
                       kGreen.with_alpha(0.55f * (1.0f - phase)));
         }

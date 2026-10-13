@@ -46,12 +46,34 @@ struct Track
     style::AlbumPalette palette; // valid when has_palette
 };
 
+// What the user can change in Control Room. The app loads and saves it
+// (settings.json) and applies it; the screens edit it live through
+// Context::settings and raise Context::settings_changed.
+struct Settings
+{
+    int quality = 2;              // 0: 96, 1: 160, 2: 320 kbps
+    int volume = 10;              // 0..10, on top of the phone's volume
+    bool phone_volume = true;     // the phone's volume buttons control this console
+    std::string device_name = "PS5";
+    bool reduced_motion = false;
+};
+
+// Facts for Control Room's About page.
+struct About
+{
+    std::string version;   // the app's contentVersion
+    std::string engine;    // cspot branch@commit it was built from
+    std::string address;   // the console's IP address
+};
+
 struct Model
 {
     Connection connection = Connection::connecting;
     Step step = Step::certificates;
     std::string message; // why: Error/Reconnecting
     std::string device_name = "PS5";
+    std::string username; // the signed-in Spotify account
+    About about;
 
     bool has_track = false; // the phone picked this device and sent a track
     Track track;
@@ -66,6 +88,7 @@ enum class Command : std::uint8_t
     next,
     previous,
     quit,
+    forget_login, // delete the saved login (Control Room > Account)
 };
 
 } // namespace screens

@@ -21,6 +21,7 @@
 #include <deque>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 
 #include "audio/player.hpp"
@@ -50,6 +51,7 @@ struct Status
     State state = State::Connecting;
     screens::Step step = screens::Step::certificates; // loader progress
     std::string message; // why we are in Error/Reconnecting
+    std::string username; // the signed-in account, once connected
     NowPlaying now_playing;
 };
 
@@ -66,10 +68,15 @@ class Controller
     void send(Command command);
     Status status();
 
+    // Control Room's settings. Quality and volume apply to the running
+    // session; a new device name reconnects so the phone sees it.
+    void apply(const screens::Settings &settings);
+
   private:
     static void *thread_entry(void *self);
     void run();
     void handle_commands();
+    void apply_settings();
     void connect();
     void step_ready();
     void step_reconnecting();
@@ -81,10 +88,13 @@ class Controller
     std::unique_ptr<spotify::Session> session_;
     std::int64_t reconnect_started_ms_ = 0;
 
+    screens::Settings settings_; // what the session runs with (controller thread)
+
     // Shared with the UI thread, under lock_.
     std::mutex lock_;
     Status status_;
     std::deque<Command> commands_;
+    std::optional<screens::Settings> pending_settings_;
 };
 
 } // namespace app

@@ -4,8 +4,8 @@
 //   launch  --(ready, loader done)--> home or now playing   iris
 //   home   <--(a track arrives / ends)--> now playing        slide
 //   any    --(connection error)--> launch (shows the error)  through black
-// Overlays on every screen: a "Reconnecting" pill, and the Quit dialog that
-// Options opens (confirm quits, back keeps listening).
+//   any   <--(Options / Back)--> Control Room                  slide
+// Overlay on every screen: a "Reconnecting" pill.
 
 #pragma once
 
@@ -14,7 +14,6 @@
 
 #include "core/tween.hpp"
 #include "screens/screen.hpp"
-#include "ui/components/dialog.hpp"
 #include "ui/motion.hpp"
 
 namespace hui::gfx
@@ -41,6 +40,7 @@ class Shell
         launch,
         home,
         playing,
+        menu, // Control Room
     };
     enum class Move
     {
@@ -54,10 +54,11 @@ class Shell
     Id wanted(const Model &model) const;
     void go(Id next, Move move, float seconds);
     void record(Frame &frame, Id id, const Model &model, float opacity, float dx, float scale);
-    void draw_overlays(gfx::DrawList &list, const Model &model, std::uint32_t glass);
+    void draw_overlays(gfx::DrawList &list, const Model &model);
 
     Context &context_;
-    std::unique_ptr<Screen> launch_, home_, playing_;
+    std::unique_ptr<Screen> launch_, home_, playing_, menu_;
+    bool menu_open_ = false;
     Id current_ = Id::launch;
     Id previous_ = Id::launch;
     Move move_ = Move::none;
@@ -71,7 +72,6 @@ class Shell
     float clock_ = 0.0f;
     std::uint32_t glass_texture_ = 0;
 
-    ui::Dialog quit_;
     tween::Spring reconnecting_;
 };
 

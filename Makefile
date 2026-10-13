@@ -21,7 +21,8 @@ BELL := $(CSPOT)/bell
 OPENGL_SDK := .deps/ps5-opengl/current
 
 # Defines that change class layouts must match tools/build-deps.sh exactly.
-APP_DEFINITIONS := GL_GLEXT_PROTOTYPES=1 BELL_TASK_MIN_STACK=1048576 \
+CSPOT_REV := $(shell git -C ../cspot rev-parse --abbrev-ref HEAD | tr "/-" "__")_$(shell git -C ../cspot rev-parse --short HEAD)
+APP_DEFINITIONS := CSPOT_REV=$(CSPOT_REV) GL_GLEXT_PROTOTYPES=1 BELL_TASK_MIN_STACK=1048576 \
 	CSPOT_CDN_CHUNK_SIZE=262144 BELL_DISABLE_FMT BELL_DISABLE_REGEX \
 	PB_ENABLE_MALLOC PB_FIELD_32BIT
 APP_INCLUDE_PATHS := src $(OPENGL_SDK)/include \

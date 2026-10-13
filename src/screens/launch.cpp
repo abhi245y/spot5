@@ -87,7 +87,7 @@ class Launch final : public Screen
     void update(const Model &model, const InputFrame &input, float dt, ui::Feedback &feedback,
                 std::vector<Command> &commands) override
     {
-        const bool reduced = context_.reduced_motion;
+        const bool reduced = context_.settings.reduced_motion;
         age_ += dt;
         clock_ += dt;
         if (!reduced)
@@ -174,7 +174,7 @@ class Launch final : public Screen
         for (int i = 0; i < 3; ++i)
         {
             // Each arc lights up in turn, like a signal going out.
-            const float wave = context_.reduced_motion
+            const float wave = context_.settings.reduced_motion
                                    ? 1.0f
                                    : 0.55f + 0.45f * ui::breathe(clock_ - 0.25f * i, 2.2f);
             const float r = 22.0f + 18.0f * static_cast<float>(i);
@@ -192,7 +192,7 @@ class Launch final : public Screen
     void draw_title(gfx::DrawList &list) const
     {
         const ui::Fonts &fonts = context_.fonts;
-        const bool reduced = context_.reduced_motion;
+        const bool reduced = context_.settings.reduced_motion;
         const float t = age_;
         const Color pale = gfx::mix(kGreen, Color::rgb(0xffffff), 0.65f);
         const Color deep = gfx::mix(kGreen, kDeep, 0.35f);

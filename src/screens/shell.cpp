@@ -10,11 +10,11 @@
 
 #include "gfx/renderer.hpp"
 #include "platform/ps5/system.hpp"
+#include "screens/control_room.hpp"
 #include "screens/home.hpp"
 #include "screens/launch.hpp"
 #include "screens/now_playing.hpp"
 #include "screens/style.hpp"
-#include "ui/theme.hpp"
 
 namespace screens
 {
@@ -26,28 +26,12 @@ using namespace style;
 constexpr float kIrisRadius = 1160.0f; // past the corners of the screen
 constexpr float kSlide = 90.0f;        // how far a screen slides on a switch
 
-// The frosted Acrylic theme, in the app's green.
-ui::Theme dialog_theme()
-{
-    ui::Theme theme = ui::default_theme();
-    for (const ui::Theme &t : ui::themes())
-        if (std::string_view(t.id) == "acrylic")
-            theme = t;
-    theme.primary = kGreen;
-    theme.accent = kGreen;
-    theme.on_primary = Color::rgb(0x03140a);
-    theme.surface = Color::rgb(0x0c1f15, 0.55f);
-    return theme;
-}
-
 } // namespace
 
 Shell::Shell(Context &context)
     : context_(context), launch_(make_launch(context)), home_(make_home(context)),
-      playing_(make_now_playing(context))
+      playing_(make_now_playing(context)), menu_(make_control_room(context))
 {
-    quit_.style.theme = dialog_theme();
-    quit_.style.reduced_motion = context.reduced_motion;
 }
 
 Shell::~Shell() = default;
@@ -62,12 +46,16 @@ Screen &Shell::screen(Id id)
         return *home_;
     case Id::playing:
         return *playing_;
+    case Id::menu:
+        return *menu_;
     }
     return *launch_;
 }
 
 Shell::Id Shell::wanted(const Model &model) const
 {
+    if (menu_open_)
+        return Id::menu;
     if (model.connection == Connection::error)
         return Id::launch; // the loader shows the error and the retry
     if (current_ == Id::launch && !launch_finished(*launch_))
@@ -79,11 +67,11 @@ Shell::Id Shell::wanted(const Model &model) const
 
 void Shell::go(Id next, Move move, float seconds)
 {
-    static const char *kNames[] = {"launch", "home", "playing"};
+    static const char *kNames[] = {"launch", "home", "playing", "control room"};
     static const char *kMoves[] = {"none", "iris", "black", "slide"};
     sys::log("[UI] screen: %s -> %s (%s)", kNames[static_cast<int>(current_)],
              kNames[static_cast<int>(next)], kMoves[static_cast<int>(move)]);
-    if (context_.reduced_motion)
+    if (context_.settings.reduced_motion)
         seconds = std::min(seconds, 0.4f);
     previous_ = current_;
     current_ = next;
@@ -113,26 +101,20 @@ void Shell::update(const Model &model, const InputFrame &input, float dt, ui::Fe
             go(next, Move::slide, 0.6f);
     }
 
-    // The dialog takes every input while it is open.
-    if (quit_.is_open())
+    // Options opens Control Room from any screen; it closes itself.
+    if (!menu_open_ && input.is_pressed(Action::menu))
     {
-        const ui::Event event = quit_.handle(input, feedback);
-        if (event == ui::Event::activated && quit_.choice() == 1)
-            commands.push_back(Command::quit);
-    }
-    else if (input.is_pressed(Action::menu))
-    {
-        quit_.open({ui::StatusKind::none,
-                    "Quit Spotify?",
-                    "The music stops and the app closes. You can also close it any time with "
-                    "the PS button.",
-                    {{"Keep listening"}, {"Quit", ui::ButtonKind::primary, true}},
-                    0},
-                   feedback);
+        menu_open_ = true;
+        feedback.play(audio::Cue::modal_open);
+        go(Id::menu, Move::slide, 0.5f);
     }
     else
     {
         screen(current_).update(model, input, dt, feedback, commands);
+        if (current_ == Id::menu && control_room_wants_close(*menu_))
+        {
+            menu_open_ = false;
+        }
     }
     // The screen that is leaving keeps animating while it is still visible.
     if (transition_.running && previous_ != current_)
@@ -142,8 +124,6 @@ void Shell::update(const Model &model, const InputFrame &input, float dt, ui::Fe
         ui::Feedback quiet;
         screen(previous_).update(model, none, dt, quiet, ignored);
     }
-    quit_.update(dt);
-
     reconnecting_.target = model.connection == Connection::reconnecting ? 1.0f : 0.0f;
     reconnecting_.update(dt, 10.0f);
 }
@@ -171,7 +151,7 @@ void Shell::compose(gfx::Renderer &renderer, const Model &model)
     Frame &old = frames_[1];
     const bool moving = transition_.running && previous_ != current_;
     const float t = moving ? transition_.progress() : 1.0f;
-    const Move move = moving ? (context_.reduced_motion && move_ == Move::iris ? Move::black : move_)
+    const Move move = moving ? (context_.settings.reduced_motion && move_ == Move::iris ? Move::black : move_)
                              : Move::none;
 
     switch (move)
@@ -223,9 +203,12 @@ void Shell::compose(gfx::Renderer &renderer, const Model &model)
         // the other side; their backdrops cross-fade underneath.
         const float out = 1.0f - tween::smoothstep(t * 1.7f);
         const float in = tween::smoothstep((t - 0.2f) / 0.8f);
-        const float slide = context_.reduced_motion ? 0.0f : kSlide;
+        const float slide = context_.settings.reduced_motion ? 0.0f : kSlide;
         const float travel = tween::quint_out(t);
-        const float direction = current_ == Id::playing ? 1.0f : -1.0f;
+        // Deeper screens arrive from the right: playing after home, the menu
+        // after anything; going back slides the other way.
+        const float direction =
+            current_ == Id::menu || (current_ == Id::playing && previous_ != Id::menu) ? 1.0f : -1.0f;
         record(old, previous_, model, out, -direction * slide * travel, 1.0f - 0.03f * travel);
         record(now, current_, model, in, direction * slide * (1.0f - travel),
                0.97f + 0.03f * travel);
@@ -240,21 +223,12 @@ void Shell::compose(gfx::Renderer &renderer, const Model &model)
     }
     }
 
-    // Overlays: frosted over whatever the screen drew.
     chrome_.clear();
-    if (quit_.visible())
-    {
-        renderer.glass();
-        draw_overlays(chrome_, model, renderer.glass_texture());
-    }
-    else
-    {
-        draw_overlays(chrome_, model, 0);
-    }
+    draw_overlays(chrome_, model);
     renderer.draw(chrome_);
 }
 
-void Shell::draw_overlays(gfx::DrawList &list, const Model &model, std::uint32_t glass)
+void Shell::draw_overlays(gfx::DrawList &list, const Model &model)
 {
     const ui::Fonts &fonts = context_.fonts;
 
@@ -275,11 +249,6 @@ void Shell::draw_overlays(gfx::DrawList &list, const Model &model, std::uint32_t
         (void)model;
     }
 
-    if (quit_.visible())
-    {
-        ui::Canvas canvas{list, fonts, glass, clock_};
-        quit_.draw(canvas);
-    }
 }
 
 } // namespace screens

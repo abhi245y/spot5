@@ -4,6 +4,10 @@
 #include "app/app.hpp"
 
 #include <GL/glcorearb.h>
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <unistd.h>
 
 #include <chrono>
 #include <cstdint>
@@ -13,6 +17,7 @@
 #include <vector>
 
 #include "BellLogger.h"
+#include "nlohmann/json.hpp"
 #include "X509Bundle.h"
 #include "app/config.hpp"
 #include "app/controller.hpp"
@@ -91,6 +96,49 @@ screens::Connection connection(State state)
     return screens::Connection::connecting;
 }
 
+// The console's address on the local network: "connect" a UDP socket toward
+// a public address (nothing is sent) and ask which local address it chose.
+// Only libkernel socket calls, which a native title can use.
+std::string local_address()
+{
+    const int fd = socket(AF_INET, SOCK_DGRAM, 0);
+    if (fd < 0)
+        return {};
+    sockaddr_in to{};
+    to.sin_family = AF_INET;
+    to.sin_port = htons(53);
+    inet_pton(AF_INET, "8.8.8.8", &to.sin_addr);
+    sockaddr_in me{};
+    socklen_t length = sizeof(me);
+    std::string address;
+    char text[INET_ADDRSTRLEN] = {};
+    if (connect(fd, reinterpret_cast<sockaddr *>(&to), sizeof(to)) == 0 &&
+        getsockname(fd, reinterpret_cast<sockaddr *>(&me), &length) == 0 &&
+        inet_ntop(AF_INET, &me.sin_addr, text, sizeof(text)))
+        address = text;
+    close(fd);
+    return address;
+}
+
+#define SPT_STRING2(x) #x
+#define SPT_STRING(x) SPT_STRING2(x)
+
+screens::About about_facts()
+{
+    screens::About about;
+    auto param = nlohmann::json::parse(read_file("/app0/sce_sys/param.json"), nullptr, false);
+    if (!param.is_discarded())
+        about.version = param.value("contentVersion", std::string());
+#ifdef CSPOT_REV
+    // Built in as branch_commit (the build's defines allow no other characters).
+    about.engine = SPT_STRING(CSPOT_REV);
+    if (const auto at = about.engine.rfind('_'); at != std::string::npos)
+        about.engine[at] = '@';
+#endif
+    about.address = local_address();
+    return about;
+}
+
 // What the screens show, from the controller's status.
 screens::Model model_from(const Status &status)
 {
@@ -98,6 +146,7 @@ screens::Model model_from(const Status &status)
     model.connection = connection(status.state);
     model.step = status.step;
     model.message = status.message;
+    model.username = status.username;
     const NowPlaying &now = status.now_playing;
     model.has_track = !now.title.empty();
     model.track.id = now.track_id;
@@ -187,7 +236,9 @@ void App::run()
         sys::park();
     }
 
+    screens::Settings settings = load_settings();
     Controller controller;
+    controller.apply(settings); // before start: the first login uses them
     if (!init_certificates() || !controller.start())
     {
         sys::log("[APP] fatal: could not start");
@@ -198,7 +249,9 @@ void App::run()
     ps5::Pad pad;
     pad.open();
     InputTracker tracker;
-    screens::Context context{fonts, false};
+    screens::Context context{fonts, settings};
+    const screens::About about = about_facts();
+    std::int64_t save_at = 0; // when to write settings.json; 0: nothing pending
     screens::Shell shell(context);
     PadSample samples[64];
     std::int64_t last = sys::monotonic_us();
@@ -220,6 +273,8 @@ void App::run()
             tracker.update(std::span<const PadSample>(samples, count), static_cast<std::uint64_t>(now));
 
         screens::Model model = model_from(controller.status());
+        model.device_name = settings.device_name;
+        model.about = about;
         if (model.has_track)
             covers.apply(model.track);
         ui::Feedback feedback;
@@ -230,6 +285,20 @@ void App::run()
             if (command == screens::Command::quit)
                 quit(display);
             controller.send(command);
+        }
+        // Settings changed in Control Room: apply now, save once the user
+        // stops (a held slider writes the file once, not per step).
+        if (context.settings_changed)
+        {
+            context.settings_changed = false;
+            controller.apply(settings);
+            save_at = now + 750000;
+        }
+        if (save_at != 0 && now >= save_at)
+        {
+            save_at = 0;
+            if (!save_settings(settings))
+                sys::log("[APP] could not save %s", paths::kSettings.c_str());
         }
         // UI sounds are not played yet (the Player owns the audio port);
         // rumble is.

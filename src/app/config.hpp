@@ -5,6 +5,8 @@
 
 #include <string>
 
+#include "screens/model.hpp"
+
 namespace app
 {
 
@@ -16,6 +18,7 @@ namespace paths
 constexpr const char *kDataDir = "/app0";
 const std::string kConfig = std::string(kDataDir) + "/config.json";
 const std::string kCredentials = std::string(kDataDir) + "/cspot-creds.json";
+const std::string kSettings = std::string(kDataDir) + "/settings.json";
 // Shipped with the app (read-only).
 constexpr const char *kCertBundle = "/app0/assets/x509_bundle.bin";
 } // namespace paths
@@ -29,6 +32,11 @@ struct Config
 // Reads paths::kConfig. Returns false and sets `error` to a message for the
 // user when the file is missing or invalid.
 bool load_config(Config &config, std::string &error);
+
+// Control Room's settings; defaults for anything missing or unreadable.
+screens::Settings load_settings();
+// Written to a temporary file and renamed, so a crash never leaves half a file.
+bool save_settings(const screens::Settings &settings);
 
 // Whole file as a string; empty if it cannot be read.
 std::string read_file(const std::string &path);

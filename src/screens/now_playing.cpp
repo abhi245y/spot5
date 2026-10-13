@@ -106,7 +106,7 @@ class NowPlaying final : public Screen
     {
         age_ += dt;
         clock_ += dt;
-        const bool reduced = context_.reduced_motion;
+        const bool reduced = context_.settings.reduced_motion;
         if (!reduced)
             drift_ += dt;
 
@@ -138,7 +138,7 @@ class NowPlaying final : public Screen
             art_in_.snap(0.0f);
             art_in_.target = 1.0f;
         }
-        art_in_.update(dt, context_.reduced_motion ? 40.0f : 6.0f);
+        art_in_.update(dt, context_.settings.reduced_motion ? 40.0f : 6.0f);
         duration_ = std::max(1.0f, static_cast<float>(model.track.duration_ms) / 1000.0f);
         position_ = static_cast<float>(model.position_ms) / 1000.0f;
         playing_ = !model.paused;
@@ -191,7 +191,7 @@ class NowPlaying final : public Screen
 
     float slide(float in, float distance) const
     {
-        return context_.reduced_motion ? 0.0f : distance * (1.0f - in);
+        return context_.settings.reduced_motion ? 0.0f : distance * (1.0f - in);
     }
 
     Rect ring_target() const
@@ -387,7 +387,7 @@ class NowPlaying final : public Screen
 
     void draw_artwork(gfx::DrawList &list) const
     {
-        const bool reduced = context_.reduced_motion;
+        const bool reduced = context_.settings.reduced_motion;
         const float in = appear(1);
         const float live = play_.value;
         const float pulse = glow_.value;
@@ -457,7 +457,7 @@ class NowPlaying final : public Screen
         if (swap_.running)
         {
             const float t = swap_.progress();
-            const float distance = context_.reduced_motion ? 0.0f : 1.0f;
+            const float distance = context_.settings.reduced_motion ? 0.0f : 1.0f;
             const float leave = tween::clamp01(t * 3.2f);
             const float arrive = tween::clamp01((t - 0.26f) / 0.74f);
             draw_track_text(list, previous_, 1.0f - tween::smoothstep(leave),

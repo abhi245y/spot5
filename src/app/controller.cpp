@@ -4,6 +4,7 @@
 #include "app/controller.hpp"
 
 #include <chrono>
+#include <cstdio>
 
 #include "platform/ps5/system.hpp"
 
@@ -59,6 +60,12 @@ void Controller::send(Command command)
     commands_.push_back(command);
 }
 
+void Controller::apply(const screens::Settings &settings)
+{
+    std::scoped_lock guard(lock_);
+    pending_settings_ = settings;
+}
+
 Status Controller::status()
 {
     std::scoped_lock guard(lock_);
@@ -75,6 +82,7 @@ void Controller::run()
 {
     for (;;)
     {
+        apply_settings();
         handle_commands();
         switch (status().state)
         {
@@ -125,9 +133,41 @@ void Controller::handle_commands()
             if (state == State::Ready)
                 session_->previous();
             break;
+        case Command::forget_login:
+            // Delete the saved login and end the session; connecting again
+            // then stops at "no saved login" until the console is paired.
+            std::remove(paths::kCredentials.c_str());
+            hui::sys::log("[APP] saved login forgotten");
+            session_.reset();
+            set_state(State::Connecting);
+            break;
         case Command::quit:
             break; // the app quits itself
         }
+    }
+}
+
+void Controller::apply_settings()
+{
+    std::optional<screens::Settings> next;
+    {
+        std::scoped_lock guard(lock_);
+        next.swap(pending_settings_);
+    }
+    if (!next)
+        return;
+    const bool renamed = next->device_name != settings_.device_name;
+    settings_ = *next;
+    if (!session_)
+        return; // used by the next connect()
+    session_->set_quality(settings_.quality);
+    session_->set_volume(settings_.volume, settings_.phone_volume);
+    if (renamed)
+    {
+        // The name is part of the Connect identity: reconnect under it.
+        hui::sys::log("[APP] device renamed to \"%s\"; reconnecting", settings_.device_name.c_str());
+        session_.reset();
+        set_state(State::Connecting);
     }
 }
 
@@ -141,7 +181,7 @@ void Controller::connect()
         set_state(State::Error, error);
         return;
     }
-    session_ = spotify::Session::start(config, error, [this](spotify::Session::Stage stage) {
+    session_ = spotify::Session::start(config, settings_, error, [this](spotify::Session::Stage stage) {
         set_step(stage == spotify::Session::Stage::connecting ? screens::Step::connect
                                                                : screens::Step::start);
     });
@@ -151,6 +191,10 @@ void Controller::connect()
         return;
     }
     set_step(screens::Step::done);
+    {
+        std::scoped_lock guard(lock_);
+        status_.username = session_->username();
+    }
     set_state(State::Ready);
 }
 

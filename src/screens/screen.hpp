@@ -45,7 +45,8 @@ struct Frame
 struct Context
 {
     const ui::Fonts &fonts;
-    bool reduced_motion = false;
+    Settings &settings;            // live: Control Room edits it
+    bool settings_changed = false; // set by a screen; the app saves and applies, then clears
 };
 
 class Screen

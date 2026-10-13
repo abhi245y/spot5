@@ -35,7 +35,8 @@ class Session
     // Logs in with the saved credentials, saves the refreshed credential and
     // starts Spotify Connect, reporting each stage. Returns nullptr and sets
     // `error` (a message for the user) on failure.
-    static std::unique_ptr<Session> start(const app::Config &config, std::string &error,
+    static std::unique_ptr<Session> start(const app::Config &config,
+                                          const screens::Settings &settings, std::string &error,
                                           const std::function<void(Stage)> &progress);
 
     ~Session();
@@ -50,6 +51,12 @@ class Session
 
     NowPlaying now_playing() { return player_->now_playing(); }
 
+    // Control Room: quality applies from the next track, volume at once.
+    void set_quality(int quality);
+    void set_volume(int level, bool follow_phone);
+    const std::string &device_name() const { return device_name_; }
+    std::string username() const;
+
     // Playback commands, as if pressed on the phone.
     void set_paused(bool paused);
     void next();
@@ -61,6 +68,7 @@ class Session
     std::shared_ptr<cspot::Context> ctx_;
     std::shared_ptr<cspot::SpircHandler> handler_;
     std::unique_ptr<Player> player_;
+    std::string device_name_;
 };
 
 } // namespace spotify

@@ -3,6 +3,7 @@
 
 #include "spotify/session.hpp"
 
+#include <algorithm>
 #include <exception>
 
 #include "CSpotContext.h"
@@ -14,12 +15,8 @@
 namespace spotify
 {
 
-namespace
-{
-constexpr const char *kDeviceName = "PS5"; // name in the phone's Connect list
-}
-
-std::unique_ptr<Session> Session::start(const app::Config &config, std::string &error,
+std::unique_ptr<Session> Session::start(const app::Config &config,
+                                        const screens::Settings &settings, std::string &error,
                                         const std::function<void(Stage)> &progress)
 {
     std::string creds = app::read_file(app::paths::kCredentials);
@@ -30,14 +27,15 @@ std::unique_ptr<Session> Session::start(const app::Config &config, std::string &
     }
 
     std::unique_ptr<Session> session(new Session());
+    session->device_name_ = settings.device_name; // the name in the phone's Connect list
     try
     {
-        auto blob = std::make_shared<cspot::LoginBlob>(kDeviceName);
+        auto blob = std::make_shared<cspot::LoginBlob>(settings.device_name);
         blob->loadJson(creds);
         session->ctx_ = cspot::Context::createFromBlob(blob);
         auto &ctx = *session->ctx_;
         ctx.config.clientId = config.client_id;
-        ctx.config.audioFormat = AudioFormat_OGG_VORBIS_320;
+        ctx.config.audioFormat = static_cast<AudioFormat>(settings.quality);
         ctx.config.volume = 65535; // reported to the phone; applied in software
 
         progress(Stage::connecting);
@@ -71,7 +69,8 @@ std::unique_ptr<Session> Session::start(const app::Config &config, std::string &
         error = "Audio output could not be opened";
         return nullptr;
     }
-    hui::sys::log("[APP] Spotify Connect running as \"%s\"", kDeviceName);
+    session->player_->set_volume(settings.volume, settings.phone_volume);
+    hui::sys::log("[APP] Spotify Connect running as \"%s\"", settings.device_name.c_str());
     return session;
 }
 
@@ -88,6 +87,23 @@ Session::~Session()
 void Session::pump()
 {
     ctx_->session->handlePacket();
+}
+
+void Session::set_quality(int quality)
+{
+    // AudioFormat_OGG_VORBIS_96/160/320 are 0/1/2, the same as the setting.
+    // QueuedTrack reads it when it picks the next track's file.
+    ctx_->config.audioFormat = static_cast<AudioFormat>(std::clamp(quality, 0, 2));
+}
+
+void Session::set_volume(int level, bool follow_phone)
+{
+    player_->set_volume(level, follow_phone);
+}
+
+std::string Session::username() const
+{
+    return ctx_->config.username;
 }
 
 void Session::set_paused(bool paused)
