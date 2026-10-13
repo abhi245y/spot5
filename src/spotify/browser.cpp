@@ -15,6 +15,7 @@
 #include "HTTPClient.h"
 #include "app/config.hpp"
 #include "nlohmann/json.hpp"
+#include "spotify/library.hpp"
 #include "platform/ps5/system.hpp"
 
 namespace spotify
@@ -75,12 +76,52 @@ Reply call(cspot::AccessKeyFetcher &keys, const std::string &path, const char *a
     return reply;
 }
 
+// One pathfinder query (the web player's GraphQL service): our login5 token,
+// the client-token and the web player's app-platform header.
+Reply pathfinder(cspot::AccessKeyFetcher &keys, const std::string &body)
+{
+    Reply reply;
+    try
+    {
+        const std::string token = keys.getAccessKey();
+        const std::string client = keys.getClientToken();
+        if (token.empty() || client.empty())
+            return reply;
+        bell::HTTPClient::Headers headers = {{"Authorization", "Bearer " + token},
+                                             {"client-token", client},
+                                             {"app-platform", "WebPlayer"},
+                                             {"Content-Type", "application/json"},
+                                             {"Accept", "application/json"}};
+        auto response = bell::HTTPClient::post("https://api-partner.spotify.com/pathfinder/v1/query", headers,
+                                               std::vector<std::uint8_t>(body.begin(), body.end()));
+        reply.body = std::string(response->body());
+        reply.status = response->statusCode();
+    }
+    catch (const std::exception &e)
+    {
+        hui::sys::log("[HOME] pathfinder: %s", e.what());
+    }
+    if (reply.status != 200)
+        hui::sys::log("[HOME] pathfinder -> HTTP %d", reply.status);
+    return reply;
+}
+
 } // namespace
 
 Browser::Browser(std::shared_ptr<cspot::Context> ctx, std::string timezone)
     : ctx_(std::move(ctx)), timezone_(std::move(timezone))
 {
     keys_ = std::make_unique<cspot::AccessKeyFetcher>(ctx_);
+    {
+        screens::Library cached;
+        long long fetched = 0;
+        if (library::from_json(app::read_file(app::paths::kLibrary), cached, fetched))
+        {
+            library_kept_ = cached;
+            library_ = std::make_shared<screens::Library>(std::move(cached));
+            library_fetched_ms_ = fetched;
+        }
+    }
     if (home::from_json(app::read_file(app::paths::kHome), sections_, entities_, fetched_ms_))
     {
         page_ = std::make_shared<screens::HomePage>(home::build_page(sections_, entities_));
@@ -142,6 +183,43 @@ void Browser::describe(const std::vector<std::string> &uris)
     std::scoped_lock guard(lock_);
     jobs_.push_back(std::move(job));
     wake_.notify_all();
+}
+
+void Browser::refresh_library()
+{
+    Job job;
+    job.kind = Job::Kind::library;
+    std::scoped_lock guard(lock_);
+    jobs_.push_back(std::move(job));
+    wake_.notify_all();
+}
+
+void Browser::artist(const std::string &uri)
+{
+    Job job;
+    job.kind = Job::Kind::artist;
+    job.uri = uri;
+    std::scoped_lock guard(lock_);
+    jobs_.push_back(std::move(job));
+    wake_.notify_all();
+}
+
+std::shared_ptr<const screens::Library> Browser::take_library()
+{
+    std::scoped_lock guard(lock_);
+    return std::exchange(library_, nullptr);
+}
+
+std::shared_ptr<const screens::ArtistPage> Browser::take_artist()
+{
+    std::scoped_lock guard(lock_);
+    return std::exchange(artist_, nullptr);
+}
+
+long long Browser::library_fetched_ms()
+{
+    std::scoped_lock guard(lock_);
+    return library_fetched_ms_;
 }
 
 std::optional<Resolved> Browser::take_opened()
@@ -231,6 +309,12 @@ void Browser::run()
             case Job::Kind::describe:
                 fetch_details(job.uris);
                 break;
+            case Job::Kind::library:
+                fetch_library();
+                break;
+            case Job::Kind::artist:
+                fetch_artist(job.uri);
+                break;
             }
         }
         catch (const std::exception &e)
@@ -244,6 +328,14 @@ void Browser::run()
                 resolved_ = std::move(failed);
             else if (job.kind == Job::Kind::open)
                 opened_ = std::move(failed);
+            else if (job.kind == Job::Kind::artist)
+            {
+                auto page = std::make_shared<screens::ArtistPage>();
+                page->card.uri = job.uri;
+                page->loading = false;
+                page->error = "Couldn't load this artist. Try again in a moment.";
+                artist_ = std::move(page);
+            }
         }
         std::scoped_lock guard(lock_);
         working_ = false;
@@ -306,6 +398,90 @@ void Browser::fetch_home()
     fetched_ms_ = now;
 }
 
+// Your Library, a page of 50 at a time (spaced out), then the wide art for
+// items not seen before (the same metadata call Home uses).
+void Browser::fetch_library()
+{
+    constexpr int kMaxItems = 1000; // ponytail: a bigger library shows its first 1000
+    screens::Library fresh;
+    int total = 0;
+    for (int offset = 0; offset < kMaxItems; offset += library::kPageSize)
+    {
+        {
+            std::scoped_lock guard(lock_);
+            if (stop_)
+                return;
+        }
+        if (offset > 0)
+            hui::sys::sleep_us(300000);
+        const Reply reply = pathfinder(*keys_, library::query("libraryV3", library::kLibraryV3,
+                                                              library::library_variables(offset)));
+        const std::size_t before = fresh.items.size();
+        if (reply.status != 200 || !library::parse_library_page(reply.body, fresh.items, total))
+            return; // keep what we have; never cache a partial error
+        if (offset + library::kPageSize >= total || fresh.items.size() == before)
+            break;
+    }
+    for (std::size_t i = 0; i < fresh.items.size(); ++i)
+        fresh.items[i].recent = static_cast<int>(i);
+
+    // Wide art: kept from the last library where known, else asked for.
+    std::map<std::string, std::string> wide;
+    for (const screens::LibraryItem &item : library_kept_.items)
+        if (!item.card.wide.empty())
+            wide[item.card.uri] = item.card.wide;
+    std::vector<std::string> wanted;
+    for (screens::LibraryItem &item : fresh.items)
+    {
+        if (const auto found = wide.find(item.card.uri); found != wide.end())
+            item.card.wide = found->second;
+        else if (item.kind != screens::LibraryItem::Kind::collection)
+            wanted.push_back(item.card.uri);
+    }
+    home::Entities art;
+    for (std::size_t first = 0; first < wanted.size(); first += kTraitsBatch)
+    {
+        hui::sys::sleep_us(300000);
+        const std::vector<std::string> batch(
+            wanted.begin() + static_cast<std::ptrdiff_t>(first),
+            wanted.begin() + static_cast<std::ptrdiff_t>(std::min(wanted.size(), first + kTraitsBatch)));
+        const std::string request = home::metadata_request(batch, ctx_->config.countryCode, {home::kVisualIdentityTrait});
+        const Reply reply = call(*keys_, "extended-metadata/v0/extended-metadata", "application/protobuf", &request);
+        if (reply.status != 200 || !home::parse_traits(reply.body, art, now_ms()))
+            break;
+    }
+    for (screens::LibraryItem &item : fresh.items)
+        if (const auto found = art.find(item.card.uri); found != art.end() && !found->second.wide.empty())
+            item.card.wide = found->second.wide;
+
+    const long long now = now_ms();
+    if (!app::write_file(app::paths::kLibrary, library::to_json(fresh, now)))
+        hui::sys::log("[HOME] note: could not save %s", app::paths::kLibrary.c_str());
+    hui::sys::log("[HOME] library: %zu items (%d in total), wide art asked for %zu", fresh.items.size(), total,
+                  wanted.size());
+    library_kept_ = fresh;
+    std::scoped_lock guard(lock_);
+    library_ = std::make_shared<screens::Library>(std::move(fresh));
+    library_fetched_ms_ = now;
+}
+
+void Browser::fetch_artist(const std::string &uri)
+{
+    auto page = std::make_shared<screens::ArtistPage>();
+    page->card.uri = uri;
+    const Reply reply = pathfinder(*keys_, library::query("queryArtistOverview", library::kArtistOverview,
+                                                          library::artist_variables(uri)));
+    if (reply.status != 200 || !library::parse_artist(reply.body, *page))
+    {
+        page->loading = false;
+        page->error = "Couldn't load this artist. Try again in a moment.";
+    }
+    hui::sys::log("[HOME] artist %s: %zu top tracks, header %s", uri.c_str(), page->top.size(),
+                  page->card.wide.empty() ? "none" : "yes");
+    std::scoped_lock guard(lock_);
+    artist_ = std::move(page);
+}
+
 void Browser::fetch_details(const std::vector<std::string> &uris)
 {
     for (std::size_t first = 0; first < uris.size(); first += kTraitsBatch)
@@ -334,7 +510,8 @@ void Browser::fetch_details(const std::vector<std::string> &uris)
 Resolved Browser::fetch_tracks(const screens::PlayRequest &request)
 {
     Resolved resolved;
-    resolved.context_uri = home::playable_uri(request.uri, ctx_->config.username);
+    resolved.context_uri =
+        library::playable_uri(home::playable_uri(request.uri, ctx_->config.username), ctx_->config.username);
     resolved.shuffle = request.shuffle;
     // Artists and similar resolve to their top tracks / radio on the server.
     const Reply reply = call(*keys_, "context-resolve/v1/" + resolved.context_uri, nullptr);

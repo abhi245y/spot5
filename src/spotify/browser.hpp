@@ -64,6 +64,10 @@ class Browser
     void open(const std::string &uri);
     // Names, artists, covers and durations for these tracks (take_described()).
     void describe(const std::vector<std::string> &uris);
+    // Your Library again (take_library()); the cached one is published at once.
+    void refresh_library();
+    // An artist's page (take_artist()).
+    void artist(const std::string &uri);
 
     // The newest page, once (after construction from the cache, and after
     // each refresh); null when nothing new.
@@ -71,6 +75,9 @@ class Browser
     std::optional<Resolved> take_resolved();
     std::optional<Resolved> take_opened();
     std::vector<screens::TrackRow> take_described();
+    std::shared_ptr<const screens::Library> take_library();
+    std::shared_ptr<const screens::ArtistPage> take_artist();
+    long long library_fetched_ms();
     bool busy();
     // When Home was last fetched successfully (ms since epoch), 0 if never.
     std::int64_t fetched_ms();
@@ -78,7 +85,7 @@ class Browser
   private:
     struct Job
     {
-        enum class Kind { refresh, resolve, open, describe } kind = Kind::refresh;
+        enum class Kind { refresh, resolve, open, describe, library, artist } kind = Kind::refresh;
         bool forget = false;                // refresh
         screens::PlayRequest play;          // resolve
         std::string uri;                    // open
@@ -90,6 +97,8 @@ class Browser
     void fetch_home();
     Resolved fetch_tracks(const screens::PlayRequest &request);
     void fetch_details(const std::vector<std::string> &uris);
+    void fetch_library();
+    void fetch_artist(const std::string &uri);
 
     std::shared_ptr<cspot::Context> ctx_;
     std::string timezone_;
@@ -110,6 +119,10 @@ class Browser
     std::optional<Resolved> resolved_;
     std::optional<Resolved> opened_;
     std::vector<screens::TrackRow> described_;
+    std::shared_ptr<const screens::Library> library_;
+    std::shared_ptr<const screens::ArtistPage> artist_;
+    long long library_fetched_ms_ = 0;
+    screens::Library library_kept_; // worker thread only: the last library, for its wide art
     std::int64_t fetched_ms_ = 0;
 };
 

@@ -63,6 +63,9 @@ struct Status
     std::shared_ptr<const screens::HomePage> home; // kept across reconnects
     std::shared_ptr<const screens::PlaylistPage> page;
     std::shared_ptr<const screens::Queue> queue;
+    std::shared_ptr<const screens::Library> library; // kept across reconnects
+    bool library_loading = false;
+    std::shared_ptr<const screens::ArtistPage> artist;
     bool home_loading = false;
     int artwork_done = 0; // reported by the app while Step::artwork
     int artwork_total = 0;
@@ -120,6 +123,7 @@ class Controller
         track_change, // a new track reaches the player
         restart,      // a new track, or this one back at its start
         page_loaded,  // the open page has its track list
+        artist_loaded, // the open artist page has arrived
     };
     void set_busy(const std::string &text, Until until);
     void step_busy();
@@ -131,6 +135,8 @@ class Controller
     std::int64_t reconnect_started_ms_ = 0;
     std::int64_t home_asked_ms_ = 0; // last refresh request, to keep calls rare
     std::int64_t artwork_since_ms_ = 0; // launch: when Step::artwork began
+    std::int64_t library_asked_ms_ = 0; // last library request, to keep calls rare
+    std::string artist_uri_;            // the artist page asked for last
     // A long context started from Home: tracks not queued yet, added a
     // window at a time as the queue runs low (dropped if the phone takes over).
     std::vector<std::string> rest_;

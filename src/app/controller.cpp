@@ -199,10 +199,21 @@ void Controller::handle_commands()
             if (state == State::Ready && now_ms() - home_asked_ms_ >= kManualRefreshGapMs)
                 refresh_home("asked");
             break;
+        case Command::refresh_library:
+            if (state == State::Ready && now_ms() - library_asked_ms_ >= kManualRefreshGapMs)
+            {
+                library_asked_ms_ = now_ms();
+                session_->browser().refresh_library();
+                std::scoped_lock guard(lock_);
+                status_.library_loading = true;
+            }
+            break;
         case Command::clear_cache:
             // The app clears covers itself; here the saved Home and what was
             // learned about tracks, then a fresh Home.
             std::remove(paths::kHome.c_str());
+            std::remove(paths::kLibrary.c_str());
+            library_asked_ms_ = 0; // fetched again with its art
             details_.clear();
             described_.clear();
             if (state == State::Ready)
@@ -382,6 +393,34 @@ void Controller::step_browser()
     for (const screens::Request &request : requests)
         handle_request(request);
 
+    if (auto library = browser.take_library())
+    {
+        std::scoped_lock guard(lock_);
+        status_.library = std::move(library);
+        status_.library_loading = false;
+    }
+    if (auto artist = browser.take_artist())
+    {
+        if (artist->card.uri == artist_uri_)
+        {
+            if (!artist->error.empty())
+                set_notice(artist->error);
+            std::scoped_lock guard(lock_);
+            status_.artist = std::move(artist);
+        }
+    }
+    // Library after the launch is done: hourly, or never fetched yet.
+    if (status().step == screens::Step::done &&
+        wall_ms() - browser.library_fetched_ms() > kHomeMaxAgeMs && !browser.busy() &&
+        (library_asked_ms_ == 0 || now_ms() - library_asked_ms_ > kRetryGapMs))
+    {
+        hui::sys::log("[APP] Library refresh");
+        library_asked_ms_ = now_ms();
+        browser.refresh_library();
+        std::scoped_lock guard(lock_);
+        status_.library_loading = true;
+    }
+
     // A page's track list, then details as they arrive.
     if (std::optional<spotify::Resolved> opened = browser.take_opened())
     {
@@ -455,8 +494,20 @@ void Controller::handle_request(const screens::Request &request)
     switch (request.kind)
     {
     case Kind::play:
+        // A list of tracks given with the request (an artist's Popular).
+        if (!request.play.tracks.empty())
+        {
+            spotify::Resolved resolved;
+            resolved.context_uri = request.play.uri;
+            resolved.tracks = request.play.tracks;
+            rest_.clear();
+            if (session_->play(resolved, rest_, static_cast<std::size_t>(std::max(0, request.play.index))))
+                rest_context_ = resolved.context_uri;
+            else
+                set_notice("Couldn't start playback");
+        }
         // From an open page: its track list is here already (start anywhere).
-        if (request.play.uri == page_.card.uri && !page_uris_.empty())
+        else if (request.play.uri == page_.card.uri && !page_uris_.empty())
         {
             spotify::Resolved resolved;
             resolved.context_uri = spotify::home::playable_uri(page_.card.uri, session_->username());
@@ -486,6 +537,19 @@ void Controller::handle_request(const screens::Request &request)
         }
         break;
     case Kind::open:
+        if (request.card.uri.rfind("spotify:artist:", 0) == 0)
+        {
+            auto loading = std::make_shared<screens::ArtistPage>();
+            loading->card = request.card;
+            artist_uri_ = request.card.uri;
+            {
+                std::scoped_lock guard(lock_);
+                status_.artist = std::move(loading);
+            }
+            browser.artist(request.card.uri);
+            set_busy("Loading " + request.card.title, Until::artist_loaded);
+            break;
+        }
         page_ = {};
         page_.card = request.card;
         page_uris_.clear();
@@ -607,6 +671,9 @@ void Controller::step_busy()
         break;
     case Until::page_loaded:
         done = !page_.loading;
+        break;
+    case Until::artist_loaded:
+        done = status_.artist && !status_.artist->loading;
         break;
     }
     if (done || now_ms() - busy_since_ms_ > kGiveUpMs)

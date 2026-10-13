@@ -159,6 +159,9 @@ screens::Model model_from(const Status &status)
     model.home = status.home;
     model.home_loading = status.home_loading;
     model.page = status.page;
+    model.library = status.library;
+    model.library_loading = status.library_loading;
+    model.artist = status.artist;
     model.queue = status.queue;
     model.artwork_done = status.artwork_done;
     model.artwork_total = status.artwork_total;

@@ -108,6 +108,43 @@ struct HomePage
     std::vector<Shelf> shelves;
 };
 
+// One thing saved in Your Library.
+struct LibraryItem
+{
+    enum class Kind : std::uint8_t
+    {
+        playlist,
+        album,
+        artist,
+        collection, // Liked Songs
+    };
+    Kind kind = Kind::playlist;
+    Card card;
+    std::string added_at; // ISO 8601, for "Recently added"
+    std::string creator;  // owner or main artist, for "Creator"
+    int recent = 0;       // place in Spotify's own Recents order
+    bool pinned = false;
+};
+
+// Your Library (pathfinder libraryV3), in Spotify's Recents order.
+struct Library
+{
+    std::vector<LibraryItem> items;
+};
+
+// An artist opened from Library or Home (pathfinder queryArtistOverview).
+struct ArtistPage
+{
+    Card card;                    // name, round photo; wide = the landscape header when there is one
+    std::string listeners;        // "60,614,071 monthly listeners"
+    std::string biography;
+    std::vector<TrackRow> top;    // Popular
+    std::vector<Card> albums;
+    std::vector<Card> singles;
+    bool loading = true;
+    std::string error;
+};
+
 // What a screen wants played: a playlist/album/... from its first track (or
 // from track `index` of its page), in order or shuffled.
 struct PlayRequest
@@ -115,6 +152,7 @@ struct PlayRequest
     std::string uri;
     bool shuffle = false;
     int index = 0;
+    std::vector<std::string> tracks; // when set: play these (in `uri`'s name) from `index`
 };
 
 // What a screen asks the app for (Context::requests), besides Commands.
@@ -168,6 +206,9 @@ struct Model
 
     std::shared_ptr<const HomePage> home; // null until the first load (or the cache)
     std::shared_ptr<const PlaylistPage> page; // the page last opened from Home
+    std::shared_ptr<const Library> library;   // null until the first load (or the cache)
+    bool library_loading = false;
+    std::shared_ptr<const ArtistPage> artist; // the artist last opened
     std::shared_ptr<const Queue> queue;       // null when nothing is queued
     bool home_loading = false;            // a fetch is running
     int artwork_done = 0;                 // launch: covers loaded so far...
@@ -192,6 +233,7 @@ enum class Command : std::uint8_t
     forget_login, // delete the saved login (Control Room > Account)
     refresh_home, // fetch Home again (R3); the app limits how often
     clear_cache,  // delete saved covers and Home (Control Room > About), then fetch again
+    refresh_library, // fetch Your Library again (R3 on Library)
 };
 
 } // namespace screens

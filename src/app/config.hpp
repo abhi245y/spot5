@@ -20,6 +20,7 @@ const std::string kConfig = std::string(kDataDir) + "/config.json";
 const std::string kCredentials = std::string(kDataDir) + "/cspot-creds.json";
 const std::string kSettings = std::string(kDataDir) + "/settings.json";
 const std::string kHome = std::string(kDataDir) + "/home.json"; // last Home page
+const std::string kLibrary = std::string(kDataDir) + "/library.json"; // last Your Library
 // Downloaded covers, by URL hash. ponytail: never pruned (directory listing
 // does not work under /app0); a few MB a month. Prune with an index if it grows.
 const std::string kCovers = std::string(kDataDir) + "/covers";
