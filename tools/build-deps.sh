@@ -20,6 +20,20 @@ mbedtls_tar="$root/.deps/src/mbedtls-$mbedtls_version.tar.bz2"
 mbedtls="$root/.deps/src/mbedtls-$mbedtls_version"
 
 mkdir -p "$root/.deps/src" "$out"
+
+# The app builds from whatever branch ../cspot has checked out. Refuse a
+# checkout that lacks the fixes the console needs (a branch cut from master
+# would silently drop them), and say what is being built.
+grep -q "login5.spotify.com" "$root/../cspot/cspot/src/AccessKeyFetcher.cpp" || {
+    echo "cspot checkout lacks login5 (feat/login5-token); check out the ps5/feature branch" >&2
+    exit 2
+}
+grep -q "hasAccept" "$root/../cspot/cspot/bell/main/io/HTTPClient.cpp" || {
+    echo "bell checkout lacks the Accept header fix (fix/accept-header)" >&2
+    exit 2
+}
+echo "cspot: $(git -C "$root/../cspot" rev-parse --abbrev-ref HEAD)@$(git -C "$root/../cspot" rev-parse --short HEAD)" \
+    "bell: $(git -C "$root/../cspot/cspot/bell" rev-parse --short HEAD)"
 if [[ ! -f $mbedtls_tar ]]; then
     curl -sSL -o "$mbedtls_tar" \
         "https://github.com/Mbed-TLS/mbedtls/releases/download/mbedtls-$mbedtls_version/mbedtls-$mbedtls_version.tar.bz2"
