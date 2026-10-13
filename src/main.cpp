@@ -69,10 +69,23 @@ constexpr int kPlaySeconds = 30;
 constexpr int kGrain = 256;
 
 // tremor reads the decrypted stream through these, as cspot's TrackPlayer does.
+// Time spent in CDN reads (network + decrypt) vs total, to tell a slow
+// network from a slow decoder. Only the decoder thread touches these.
+long g_read_us = 0, g_slow_reads = 0;
+std::size_t g_read_bytes = 0;
+
 size_t vorbis_read(void *ptr, size_t size, size_t nmemb, void *file)
 {
-    return static_cast<cspot::CDNAudioFile *>(file)->readBytes(static_cast<uint8_t *>(ptr),
-                                                             size * nmemb);
+    auto start = std::chrono::steady_clock::now();
+    size_t n = static_cast<cspot::CDNAudioFile *>(file)->readBytes(static_cast<uint8_t *>(ptr),
+                                                                 size * nmemb);
+    long us = std::chrono::duration_cast<std::chrono::microseconds>(
+                  std::chrono::steady_clock::now() - start)
+                  .count();
+    g_read_us += us;
+    g_slow_reads += us > 100000;
+    g_read_bytes += n;
+    return n;
 }
 int vorbis_seek(void *file, ogg_int64_t offset, int whence)
 {
@@ -129,6 +142,7 @@ void play(std::shared_ptr<cspot::CDNAudioFile> file)
     constexpr std::size_t kPrebuffer = 2 * 48000 * 2; // start after 2 s
     bool finished = false, stop = false;
     long slowest_ms = 0;
+    long decode_us = 0; // total time inside ov_read, CDN reads included
 
     // pthread with an explicit 1 MiB stack: tremor allocas per packet, and
     // the platform default stack size is not known to be large enough.
@@ -149,6 +163,9 @@ void play(std::shared_ptr<cspot::CDNAudioFile> file)
                 resampler.process(decoded.data(), static_cast<std::size_t>(bytes) / 4, out);
             std::unique_lock<std::mutex> guard(lock);
             slowest_ms = ms > slowest_ms ? ms : slowest_ms;
+            decode_us += std::chrono::duration_cast<std::chrono::microseconds>(
+                             std::chrono::steady_clock::now() - start)
+                             .count();
             if (bytes <= 0 || stop)
             {
                 finished = true;
@@ -184,6 +201,7 @@ void play(std::shared_ptr<cspot::CDNAudioFile> file)
         std::unique_lock<std::mutex> guard(lock);
         changed.wait(guard, [&] { return finished || buffer.size() >= kPrebuffer; });
     }
+    auto play_start = std::chrono::steady_clock::now();
     std::size_t played = 0;
     int errors = 0, underruns = 0;
     int16_t grain[kGrain * 2];
@@ -221,6 +239,13 @@ void play(std::shared_ptr<cspot::CDNAudioFile> file)
     trace("[LOGIN] step6: played %.1f s, output errors=%d, underrun grains=%d, "
           "slowest decode %ld ms",
           played / 48000.0, errors, underruns, slowest_ms);
+    long wall_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                       std::chrono::steady_clock::now() - play_start)
+                       .count();
+    trace("[LOGIN] step6: wall %ld ms; in ov_read %ld ms = CDN reads %ld ms (%zu KB, "
+          "%ld reads >100 ms) + decode %ld ms",
+          wall_ms, decode_us / 1000, g_read_us / 1000, g_read_bytes / 1024, g_slow_reads,
+          (decode_us - g_read_us) / 1000);
 }
 
 void trace(const char *format, ...) __attribute__((format(printf, 1, 2)));
