@@ -40,6 +40,12 @@ int main(int argc, char **argv)
     assert(items[1].creator == "Spotify" && items[1].card.image == "p-img");
     assert(items[2].card.round && items[2].card.image == "a-160" && items[2].card.image_large == "a-640");
     assert(!library::parse_library_page("<html>", items, total));
+    // Optional fields may be null: still a page.
+    screens::ArtistPage nulls;
+    assert(library::parse_artist(R"({"data":{"artistUnion":{"uri":"spotify:artist:n","profile":{"name":"N","biography":{"text":null}},
+        "visuals":null,"headerImage":null,"stats":{"monthlyListeners":null},"discography":{"topTracks":null,"albums":{"items":[]}}}}})",
+                                 nulls));
+    assert(nulls.card.title == "N" && nulls.biography.empty() && nulls.top.empty() && !nulls.loading);
 
     screens::Library library;
     library.items = items;
@@ -67,6 +73,12 @@ int main(int argc, char **argv)
         std::printf("artist %s: %s; wide %s; %zu top, %zu albums, %zu singles\n", artist.card.title.c_str(),
                     artist.listeners.c_str(), artist.card.wide.c_str(), artist.top.size(), artist.albums.size(),
                     artist.singles.size());
+        // A small artist: no header, no albums, a biography whose text is null.
+        screens::ArtistPage small;
+        assert(library::parse_artist(slurp(dir + "/artist_small.json"), small));
+        std::printf("small artist %s: %s; header %s; %zu top, %zu albums, %zu singles\n", small.card.title.c_str(),
+                    small.listeners.c_str(), small.card.wide.empty() ? "none" : "yes", small.top.size(),
+                    small.albums.size(), small.singles.size());
         std::printf("  top 1: %s by %s, %u ms, %s\n", artist.top[0].title.c_str(), artist.top[0].artists.c_str(),
                     artist.top[0].duration_ms, artist.top[0].image.c_str());
     }
