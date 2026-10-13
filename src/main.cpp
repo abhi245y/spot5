@@ -15,7 +15,12 @@
 
 #include <chrono>
 #include <cstdarg>
+#include <algorithm>
+#include <condition_variable>
+#include <deque>
 #include <mutex>
+#include <functional>
+#include <pthread.h>
 #include <cstdio>
 #include <cstring>
 #include <exception>
@@ -114,15 +119,24 @@ void play(std::shared_ptr<cspot::CDNAudioFile> file)
         return;
     }
 
-    Resampler resampler(info->rate, 48000);
-    std::vector<int16_t> decoded(4096), pending;
-    std::size_t played = 0, read_at = 0;
+    // Decoder thread fills a few seconds of 48 kHz audio; this thread only
+    // moves grains to sceAudioOut. The port holds just one grain (~5 ms),
+    // so decoding or a CDN fetch (up to ~350 ms) on this thread leaves gaps.
+    std::mutex lock;
+    std::condition_variable changed;
+    std::deque<int16_t> buffer;
+    constexpr std::size_t kCapacity = 4 * 48000 * 2; // 4 s
+    constexpr std::size_t kPrebuffer = 2 * 48000 * 2; // start after 2 s
+    bool finished = false, stop = false;
     long slowest_ms = 0;
-    int errors = 0, section = 0;
-    while (played < static_cast<std::size_t>(kPlaySeconds) * 48000)
-    {
-        // Top up the 48 kHz buffer, then play whole grains from it.
-        while (pending.size() - read_at < kGrain * 2)
+
+    // pthread with an explicit 1 MiB stack: tremor allocas per packet, and
+    // the platform default stack size is not known to be large enough.
+    std::function<void()> decode = [&] {
+        Resampler resampler(info->rate, 48000);
+        std::vector<int16_t> decoded(4096), out;
+        int section = 0;
+        for (;;)
         {
             auto start = std::chrono::steady_clock::now();
             long bytes = ov_read(&vorbis, reinterpret_cast<char *>(decoded.data()),
@@ -130,32 +144,83 @@ void play(std::shared_ptr<cspot::CDNAudioFile> file)
             long ms = std::chrono::duration_cast<std::chrono::milliseconds>(
                           std::chrono::steady_clock::now() - start)
                           .count();
+            out.clear();
+            if (bytes > 0)
+                resampler.process(decoded.data(), static_cast<std::size_t>(bytes) / 4, out);
+            std::unique_lock<std::mutex> guard(lock);
             slowest_ms = ms > slowest_ms ? ms : slowest_ms;
-            if (bytes <= 0)
+            if (bytes <= 0 || stop)
             {
-                trace("[LOGIN] step6: decoder stopped rc=%ld", bytes);
-                played = SIZE_MAX - 1;
-                break;
+                finished = true;
+                changed.notify_all();
+                return;
             }
-            resampler.process(decoded.data(), static_cast<std::size_t>(bytes) / 4, pending);
+            changed.wait(guard, [&] { return stop || buffer.size() + out.size() <= kCapacity; });
+            buffer.insert(buffer.end(), out.begin(), out.end());
+            changed.notify_all();
         }
-        if (pending.size() - read_at < kGrain * 2)
-            break;
-        if (sceAudioOutOutput(handle, pending.data() + read_at) < 0)
-            errors++;
-        read_at += kGrain * 2;
-        played += kGrain;
-        if (read_at > 1 << 16) // drop played samples now and then
-        {
-            pending.erase(pending.begin(), pending.begin() + static_cast<long>(read_at));
-            read_at = 0;
-        }
+    };
+    pthread_attr_t attr;
+    pthread_attr_init(&attr);
+    pthread_attr_setstacksize(&attr, 1 << 20);
+    pthread_t decoder;
+    int created = pthread_create(
+        &decoder, &attr,
+        [](void *fn) -> void * {
+            (*static_cast<std::function<void()> *>(fn))();
+            return nullptr;
+        },
+        &decode);
+    pthread_attr_destroy(&attr);
+    if (created != 0)
+    {
+        trace("[LOGIN] step6: decoder thread FAILED rc=%d", created);
+        sceAudioOutClose(handle);
+        ov_clear(&vorbis);
+        return;
     }
+
+    {
+        std::unique_lock<std::mutex> guard(lock);
+        changed.wait(guard, [&] { return finished || buffer.size() >= kPrebuffer; });
+    }
+    std::size_t played = 0;
+    int errors = 0, underruns = 0;
+    int16_t grain[kGrain * 2];
+    while (played < static_cast<std::size_t>(kPlaySeconds) * 48000)
+    {
+        {
+            std::unique_lock<std::mutex> guard(lock);
+            if (buffer.size() >= kGrain * 2)
+            {
+                std::copy(buffer.begin(), buffer.begin() + kGrain * 2, grain);
+                buffer.erase(buffer.begin(), buffer.begin() + kGrain * 2);
+                changed.notify_all();
+            }
+            else if (finished)
+                break;
+            else
+            {
+                std::fill(grain, grain + kGrain * 2, 0);
+                underruns++;
+            }
+        }
+        if (sceAudioOutOutput(handle, grain) < 0)
+            errors++;
+        played += kGrain;
+    }
+    {
+        std::lock_guard<std::mutex> guard(lock);
+        stop = true;
+        changed.notify_all();
+    }
+    pthread_join(decoder, nullptr);
     sceAudioOutOutput(handle, nullptr);
     sceAudioOutClose(handle);
     ov_clear(&vorbis);
-    trace("[LOGIN] step6: played %.1f s, output errors=%d, slowest decode %ld ms",
-          played > SIZE_MAX / 2 ? -1.0 : played / 48000.0, errors, slowest_ms);
+    trace("[LOGIN] step6: played %.1f s, output errors=%d, underrun grains=%d, "
+          "slowest decode %ld ms",
+          played / 48000.0, errors, underruns, slowest_ms);
 }
 
 void trace(const char *format, ...) __attribute__((format(printf, 1, 2)));
