@@ -17,6 +17,7 @@ namespace screens
 enum class Connection : std::uint8_t
 {
     connecting,
+    pairing, // nothing saved: waiting for the phone to pick this device
     ready,
     reconnecting,
     error,

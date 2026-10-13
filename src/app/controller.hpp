@@ -7,7 +7,9 @@
 //
 // States:
 //   Connecting   -> Ready          login worked
-//   Connecting   -> Error          no config/login, no network, rejected login
+//   Connecting   -> Pairing        nothing saved: wait for the phone (zeroconf)
+//   Pairing      -> Connecting     the phone sent its login
+//   Connecting   -> Error          no config, no network, rejected login
 //   Ready        -> Reconnecting   cspot lost the connection (it retries itself)
 //   Reconnecting -> Ready          cspot got it back
 //   Reconnecting -> Error          not back within kReconnectGiveUpMs
@@ -26,6 +28,7 @@
 
 #include "audio/player.hpp"
 #include "screens/model.hpp"
+#include "spotify/pairing.hpp"
 #include "spotify/session.hpp"
 
 namespace app
@@ -34,6 +37,7 @@ namespace app
 enum class State
 {
     Connecting,
+    Pairing,
     Ready,
     Reconnecting,
     Error,
@@ -78,6 +82,9 @@ class Controller
     void handle_commands();
     void apply_settings();
     void connect();
+    void start_pairing();
+    void step_pairing();
+    void start_session(std::shared_ptr<cspot::LoginBlob> login);
     void step_ready();
     void step_reconnecting();
     void set_state(State next, const std::string &message = {});
@@ -86,6 +93,7 @@ class Controller
 
     // Controller thread only.
     std::unique_ptr<spotify::Session> session_;
+    std::unique_ptr<spotify::Pairing> pairing_; // only in Pairing (and the login after it)
     std::int64_t reconnect_started_ms_ = 0;
 
     screens::Settings settings_; // what the session runs with (controller thread)

@@ -56,8 +56,8 @@ Shell::Id Shell::wanted(const Model &model) const
 {
     if (menu_open_)
         return Id::menu;
-    if (model.connection == Connection::error)
-        return Id::launch; // the loader shows the error and the retry
+    if (model.connection == Connection::error || model.connection == Connection::pairing)
+        return Id::launch; // the loader shows the error and the retry, or how to pair
     if (current_ == Id::launch && !launch_finished(*launch_))
         return Id::launch; // let the loader finish what it shows
     if (model.connection == Connection::connecting)

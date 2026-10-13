@@ -86,6 +86,8 @@ screens::Connection connection(State state)
     {
     case State::Connecting:
         return screens::Connection::connecting;
+    case State::Pairing:
+        return screens::Connection::pairing;
     case State::Ready:
         return screens::Connection::ready;
     case State::Reconnecting:

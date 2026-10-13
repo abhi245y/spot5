@@ -1,4 +1,5 @@
-// ps5-spotify - Launch screen: title card and an honest loader.
+// ps5-spotify - Launch screen: title card and an honest loader; with nothing
+// saved, the loader makes way for how to pair the phone.
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // Techniques and numbers from ps5-homebrew-ui src/concepts/boot.cpp
@@ -46,6 +47,12 @@ constexpr float kSweepProfile[kSweepStrips] = {0.08f, 0.22f, 0.42f, 0.64f, 0.80f
 constexpr float kBarY = 928.0f;
 constexpr float kBarH = 8.0f;
 constexpr float kHandOver = 0.9f; // seconds "ready" stays before the hand-over
+
+// ---- pairing ----
+constexpr float kCardW = 460.0f;
+constexpr float kCardH = 84.0f;
+constexpr float kCardGap = 30.0f;
+constexpr float kCardY = 800.0f;
 
 const char *step_name(Step step)
 {
@@ -138,6 +145,13 @@ class Launch final : public Screen
         if (ready_)
             ready_age_ += dt;
 
+        pair_.target = model.connection == Connection::pairing ? 1.0f : 0.0f;
+        pair_.update(dt, 7.0f);
+        if (pair_.target > 0.5f)
+            pair_age_ += dt;
+        else
+            pair_age_ = 0.0f;
+
         spinner_.target = ready_ || failed ? 0.0f : 0.45f + 0.55f * (step_age_ > 2.0f);
         spinner_.update(dt, 8.0f);
         flash_.update(dt, 2.6f);
@@ -159,7 +173,11 @@ class Launch final : public Screen
         frame.post.params[0] = 0.45f;
 
         draw_title(frame.scene);
+        frame.scene.push_opacity(1.0f - pair_.value);
         draw_loader(frame.scene, model);
+        frame.scene.pop_opacity();
+        draw_pairing(frame.scene, model);
+        draw_hints(frame.scene, model);
     }
 
     bool finished() const { return ready_ && ready_age_ >= kHandOver; }
@@ -381,9 +399,75 @@ class Launch final : public Screen
             list.circle(fill.x + fill.w - 2, fill.y + fill.h * 0.5f, 6, gfx::mix(tone, kInk, 0.6f));
         list.rounded_rect(track, kBarH * 0.5f, Color::rgb(0xffffff, 0.85f * flash_.value));
         list.pop_opacity();
+    }
 
-        // Hints: what the buttons do right now.
-        list.push_opacity(tween::stagger(t, 4, 0.08f, 0.6f));
+    // How to pair: three steps on cards, then a radar while the console
+    // waits for the phone. Fades in over the loader's place.
+    void draw_pairing(gfx::DrawList &list, const Model &model) const
+    {
+        const float in = pair_.value;
+        if (in <= 0.01f)
+            return;
+        const ui::Fonts &fonts = context_.fonts;
+        const float rise = 16.0f * (1.0f - in);
+        list.push_opacity(in);
+
+        ui::text(list, fonts.semibold, "Pair with your phone", kCentreX, 712 + rise, 40, kInk,
+                 gfx::Align::center);
+        ui::text(list, fonts.regular, "Your phone and this PS5 need to be on the same network.",
+                 kCentreX, 754 + rise, 24, kInk.with_alpha(0.6f), gfx::Align::center);
+
+        const std::string steps[3][2] = {{"Open Spotify on", "your phone"},
+                                         {"Tap the", "devices icon"},
+                                         {"Choose", model.device_name}};
+        const float left = kCentreX - (3.0f * kCardW + 2.0f * kCardGap) * 0.5f;
+        for (int i = 0; i < 3; ++i)
+        {
+            const float arrive = tween::stagger(pair_age_, i, 0.09f, 0.5f);
+            const Rect card{left + static_cast<float>(i) * (kCardW + kCardGap),
+                            kCardY + rise + 14.0f * (1.0f - arrive), kCardW, kCardH};
+            list.push_opacity(arrive);
+            list.bordered_rect(card, 18, kInk.with_alpha(0.05f), 1.5f, kGreen.with_alpha(0.28f));
+            const float cx = card.x + 44;
+            const float cy = card.y + card.h * 0.5f;
+            list.ring(cx, cy, 21, 2, kGreen);
+            char digit[2] = {static_cast<char>('1' + i), 0};
+            ui::text(list, fonts.mono, digit, cx, cy + 8, 22, kGreen, gfx::Align::center);
+            list.push_clip({card.x, card.y, card.w - 20, card.h}); // long device names
+            const float lead = ui::text(list, fonts.regular, steps[i][0], card.x + 84, cy + 9, 26,
+                                        kInk.with_alpha(0.75f));
+            ui::text(list, fonts.semibold, steps[i][1], card.x + 84 + lead + 8, cy + 9, 26,
+                     i == 2 ? kMint : kInk);
+            list.pop_clip();
+            list.pop_opacity();
+        }
+
+        // Radar: rings go out from a dot, like the console calling out.
+        const std::string waiting = ui::upper("Waiting for your phone");
+        const float waiting_w = fonts.semibold.measure(waiting, 17, 3.5f);
+        const float spin_x = kCentreX - (waiting_w + 36.0f) * 0.5f + 11.0f;
+        const float spin_y = 948;
+        const bool reduced = context_.settings.reduced_motion;
+        for (int k = 0; k < 3; ++k)
+        {
+            const float phase =
+                reduced ? 0.33f * static_cast<float>(k + 1)
+                        : std::fmod(clock_ * 0.55f + static_cast<float>(k) / 3.0f, 1.0f);
+            list.ring(spin_x, spin_y, 6.0f + 20.0f * phase, 2,
+                      kGreen.with_alpha(0.65f * (1.0f - phase)));
+        }
+        list.circle(spin_x, spin_y, 5, kMint);
+        ui::text(list, fonts.semibold, waiting, spin_x + 25, spin_y + 6, 17, kInk.with_alpha(0.85f),
+                 gfx::Align::left, 3.5f);
+        list.pop_opacity();
+    }
+
+    // Hints: what the buttons do right now.
+    void draw_hints(gfx::DrawList &list, const Model &model) const
+    {
+        const ui::Fonts &fonts = context_.fonts;
+        const bool failed = model.connection == Connection::error;
+        list.push_opacity(tween::stagger(age_, 4, 0.08f, 0.6f));
         const ui::GlyphStyle glyphs = ui::GlyphStyle::dark();
         if (failed)
         {
@@ -411,6 +495,8 @@ class Launch final : public Screen
     tween::Timer stage_fade_;
     tween::Spring bar_;
     tween::Spring spinner_;
+    tween::Spring pair_; // 1 while pairing: the steps replace the loader
+    float pair_age_ = 0.0f;
     ui::Pulse flash_;
     ui::Pulse deny_;
     bool ready_ = false;

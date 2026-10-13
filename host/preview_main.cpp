@@ -129,6 +129,15 @@ const std::vector<Beat> &script()
                          "connection, then try again.";
          },
          0, "03-launch-error"},
+        // Nothing saved: the loader makes way for how to pair.
+        {0.25f,
+         [](Model &m) {
+             m.connection = Connection::pairing;
+             m.message.clear();
+             m.device_name = "Living Room PS5";
+         },
+         0, "03a-pairing-fading-in"},
+        {2.0f, nullptr, 0, "03b-pairing"},
         {0.3f,
          [](Model &m) {
              m.connection = Connection::connecting;

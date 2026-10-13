@@ -5,6 +5,7 @@
 
 #include <chrono>
 #include <cstdio>
+#include <exception>
 
 #include "platform/ps5/system.hpp"
 
@@ -30,6 +31,8 @@ const char *state_name(State state)
     {
     case State::Connecting:
         return "Connecting";
+    case State::Pairing:
+        return "Pairing";
     case State::Ready:
         return "Ready";
     case State::Reconnecting:
@@ -89,6 +92,9 @@ void Controller::run()
         case State::Connecting:
             connect();
             break;
+        case State::Pairing:
+            step_pairing();
+            break;
         case State::Ready:
             step_ready();
             break;
@@ -118,6 +124,7 @@ void Controller::handle_commands()
             if (state == State::Error)
             {
                 session_.reset();
+                pairing_.reset();
                 set_state(State::Connecting);
             }
             break;
@@ -135,10 +142,11 @@ void Controller::handle_commands()
             break;
         case Command::forget_login:
             // Delete the saved login and end the session; connecting again
-            // then stops at "no saved login" until the console is paired.
+            // then finds nothing saved and waits for the phone (Pairing).
             std::remove(paths::kCredentials.c_str());
             hui::sys::log("[APP] saved login forgotten");
             session_.reset();
+            pairing_.reset();
             set_state(State::Connecting);
             break;
         case Command::quit:
@@ -158,6 +166,13 @@ void Controller::apply_settings()
         return;
     const bool renamed = next->device_name != settings_.device_name;
     settings_ = *next;
+    if (pairing_ && renamed)
+    {
+        // Advertise under the new name.
+        pairing_.reset();
+        set_state(State::Connecting);
+        return;
+    }
     if (!session_)
         return; // used by the next connect()
     session_->set_quality(settings_.quality);
@@ -174,6 +189,58 @@ void Controller::apply_settings()
 void Controller::connect()
 {
     set_step(screens::Step::login);
+    std::shared_ptr<cspot::LoginBlob> login;
+    try
+    {
+        login = spotify::Session::saved_login(settings_.device_name);
+    }
+    catch (const std::exception &)
+    {
+        set_state(State::Error, "The saved login is unreadable. Forget it in Settings > Account.");
+        return;
+    }
+    if (login)
+        start_session(std::move(login));
+    else
+        start_pairing();
+}
+
+void Controller::start_pairing()
+{
+    std::string error;
+    pairing_ = spotify::Pairing::start(settings_.device_name, error);
+    if (!pairing_)
+    {
+        set_state(State::Error, error);
+        return;
+    }
+    {
+        std::scoped_lock guard(lock_);
+        status_.username.clear();
+    }
+    set_state(State::Pairing);
+}
+
+void Controller::step_pairing()
+{
+    std::string error;
+    std::shared_ptr<cspot::LoginBlob> login = pairing_->take_login(error);
+    if (!error.empty())
+        hui::sys::log("[APP] pairing: %s", error.c_str()); // the phone can try again
+    if (!login)
+    {
+        hui::sys::sleep_us(100000);
+        return;
+    }
+    set_state(State::Connecting);
+    start_session(std::move(login));
+    // ponytail: the phone may check /spotify_info while we log in, so the
+    // advertisement stays up until the login is done.
+    pairing_.reset();
+}
+
+void Controller::start_session(std::shared_ptr<cspot::LoginBlob> login)
+{
     Config config;
     std::string error;
     if (!load_config(config, error))
@@ -181,10 +248,12 @@ void Controller::connect()
         set_state(State::Error, error);
         return;
     }
-    session_ = spotify::Session::start(config, settings_, error, [this](spotify::Session::Stage stage) {
-        set_step(stage == spotify::Session::Stage::connecting ? screens::Step::connect
-                                                               : screens::Step::start);
-    });
+    session_ = spotify::Session::start(config, settings_, std::move(login), error,
+                                       [this](spotify::Session::Stage stage) {
+                                           set_step(stage == spotify::Session::Stage::connecting
+                                                        ? screens::Step::connect
+                                                        : screens::Step::start);
+                                       });
     if (!session_)
     {
         set_state(State::Error, error);

@@ -17,6 +17,7 @@
 namespace cspot
 {
 struct Context;
+class LoginBlob;
 class SpircHandler;
 } // namespace cspot
 
@@ -32,11 +33,16 @@ class Session
         starting,   // Spotify Connect and the audio output
     };
 
-    // Logs in with the saved credentials, saves the refreshed credential and
-    // starts Spotify Connect, reporting each stage. Returns nullptr and sets
-    // `error` (a message for the user) on failure.
+    // The login saved by an earlier session, or nullptr if there is none
+    // (the console needs pairing). Throws if the file is unreadable JSON.
+    static std::shared_ptr<cspot::LoginBlob> saved_login(const std::string &device_name);
+
+    // Logs in (saved login or one from pairing), saves the refreshed
+    // credential and starts Spotify Connect, reporting each stage. Returns
+    // nullptr and sets `error` (a message for the user) on failure.
     static std::unique_ptr<Session> start(const app::Config &config,
-                                          const screens::Settings &settings, std::string &error,
+                                          const screens::Settings &settings,
+                                          std::shared_ptr<cspot::LoginBlob> login, std::string &error,
                                           const std::function<void(Stage)> &progress);
 
     ~Session();

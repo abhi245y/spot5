@@ -54,10 +54,11 @@ mbedtls_flags=(-std=c11 -O2 -w -ffunction-sections -fdata-sections
 cspot="$root/../cspot/cspot"
 gen="$out/proto"
 common_defs=(-DBELL_TASK_MIN_STACK=1048576 -DCSPOT_CDN_CHUNK_SIZE=262144 -DBELL_DISABLE_FMT -DBELL_DISABLE_REGEX -DPB_ENABLE_MALLOC -DPB_FIELD_32BIT
-    "-DMBEDTLS_USER_CONFIG_FILE=\"$root/src/platform/mbedtls_ps5_config.h\"")
+    -DBELL_DISABLE_AVAHI "-DMBEDTLS_USER_CONFIG_FILE=\"$root/src/platform/mbedtls_ps5_config.h\"")
 includes=(-I"$mbedtls/include" -I"$bell/main/io/include" -I"$bell/main/utilities/include"
     -I"$bell/main/platform" -I"$bell/external/nanopb" -I"$bell/external/nlohmann_json/include"
-    -I"$cspot/include" -I"$gen" -I"$bell/external/tremor")
+    -I"$cspot/include" -I"$gen" -I"$bell/external/tremor"
+    -I"$bell/external/civetweb/include" -I"$bell/external/mdnssvc")
 bell_flags=(-std=c++17 -O2 -w -fexceptions -frtti -ffunction-sections -fdata-sections
     "${common_defs[@]}" "${includes[@]}")
 bell_c_flags=(-std=c11 -O2 -w -ffunction-sections -fdata-sections
@@ -102,8 +103,11 @@ bell_sources=(
     "$bell/main/utilities/NanoPBHelper.cpp"
     "$bell/main/utilities/NanoPBExtensions.cpp"
     "$bell/main/platform/linux/WrappedSemaphore.cpp"
+    # Zeroconf pairing: web server for the phone's login, mDNS to be found.
+    "$bell/main/io/BellHTTPServer.cpp"
+    "$bell/external/civetweb/CivetServer.cpp"
+    "$bell/main/platform/linux/MDNSService.cpp"
 )
-# ponytail: zeroconf (ZeroconfAuthenticator/mDNS) joins later.
 for name in AccessKeyFetcher ApResolve AuthChallenges LoginBlob MercurySession \
     PlainConnection Session ShannonConnection Shannon TimeProvider Utils \
     TrackQueue TrackReference CDNAudioFile PlaybackState SpircHandler TrackPlayer; do
@@ -111,6 +115,7 @@ for name in AccessKeyFetcher ApResolve AuthChallenges LoginBlob MercurySession \
 done
 compile "$out/bell" bell_flags "${bell_sources[@]}"
 compile "$out/bell-c" bell_c_flags "$bell/main/io/picohttpparser.c" "$bell/main/utilities/aes.c" \
+    "$bell/external/civetweb/civetweb.c" "$bell/external/mdnssvc/mdns.c" "$bell/external/mdnssvc/mdnsd.c" \
     "$bell/external/nanopb/pb_common.c" "$bell/external/nanopb/pb_decode.c" \
     "$bell/external/nanopb/pb_encode.c" "$gen"/protobuf/*.pb.c \
     $(ls "$bell"/external/tremor/*.c | grep -v ivorbisfile_example)

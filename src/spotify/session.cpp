@@ -15,23 +15,25 @@
 namespace spotify
 {
 
-std::unique_ptr<Session> Session::start(const app::Config &config,
-                                        const screens::Settings &settings, std::string &error,
-                                        const std::function<void(Stage)> &progress)
+std::shared_ptr<cspot::LoginBlob> Session::saved_login(const std::string &device_name)
 {
     std::string creds = app::read_file(app::paths::kCredentials);
     if (creds.empty())
-    {
-        error = "No saved login (" + app::paths::kCredentials + ")";
         return nullptr;
-    }
+    auto blob = std::make_shared<cspot::LoginBlob>(device_name);
+    blob->loadJson(creds);
+    return blob;
+}
 
+std::unique_ptr<Session> Session::start(const app::Config &config,
+                                        const screens::Settings &settings,
+                                        std::shared_ptr<cspot::LoginBlob> blob, std::string &error,
+                                        const std::function<void(Stage)> &progress)
+{
     std::unique_ptr<Session> session(new Session());
     session->device_name_ = settings.device_name; // the name in the phone's Connect list
     try
     {
-        auto blob = std::make_shared<cspot::LoginBlob>(settings.device_name);
-        blob->loadJson(creds);
         session->ctx_ = cspot::Context::createFromBlob(blob);
         auto &ctx = *session->ctx_;
         ctx.config.clientId = config.client_id;
@@ -43,7 +45,7 @@ std::unique_ptr<Session> Session::start(const app::Config &config,
         ctx.config.authData = ctx.session->authenticate(blob);
         if (ctx.config.authData.empty())
         {
-            error = "Spotify rejected the saved login";
+            error = "Spotify rejected the login";
             return nullptr;
         }
     }
