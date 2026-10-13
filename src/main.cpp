@@ -126,7 +126,15 @@ void run()
                               }
                               done->give();
                           });
-    if (done->twait(15000) != 0)
+    // The app drives Mercury: each handlePacket() call processes one queued
+    // packet (waiting up to 200 ms), like the PC CLI's main loop.
+    bool answered = false;
+    for (int i = 0; i < 75 && !answered; i++)
+    {
+        ctx->session->handlePacket();
+        answered = done->twait(0) == 0;
+    }
+    if (!answered)
         trace("[LOGIN] step3: metadata TIMEOUT");
     else
         trace("[LOGIN] step3: metadata %s (track name: %s)", name.empty() ? "FAILED" : "OK",
