@@ -53,7 +53,7 @@ mbedtls_flags=(-std=c11 -O2 -w -ffunction-sections -fdata-sections
     -I"$mbedtls/include")
 cspot="$root/../cspot/cspot"
 gen="$out/proto"
-common_defs=(-DCSPOT_CDN_CHUNK_SIZE=262144 -DBELL_DISABLE_FMT -DBELL_DISABLE_REGEX -DPB_ENABLE_MALLOC -DPB_FIELD_32BIT
+common_defs=(-DBELL_TASK_MIN_STACK=1048576 -DCSPOT_CDN_CHUNK_SIZE=262144 -DBELL_DISABLE_FMT -DBELL_DISABLE_REGEX -DPB_ENABLE_MALLOC -DPB_FIELD_32BIT
     "-DMBEDTLS_USER_CONFIG_FILE=\"$root/src/platform/mbedtls_ps5_config.h\"")
 includes=(-I"$mbedtls/include" -I"$bell/main/io/include" -I"$bell/main/utilities/include"
     -I"$bell/main/platform" -I"$bell/external/nanopb" -I"$bell/external/nlohmann_json/include"
@@ -103,10 +103,10 @@ bell_sources=(
     "$bell/main/utilities/NanoPBExtensions.cpp"
     "$bell/main/platform/linux/WrappedSemaphore.cpp"
 )
-# ponytail: no spirc/TrackPlayer yet; they join with phone control.
+# ponytail: zeroconf (ZeroconfAuthenticator/mDNS) joins later.
 for name in AccessKeyFetcher ApResolve AuthChallenges LoginBlob MercurySession \
     PlainConnection Session ShannonConnection Shannon TimeProvider Utils \
-    TrackQueue TrackReference CDNAudioFile PlaybackState; do
+    TrackQueue TrackReference CDNAudioFile PlaybackState SpircHandler TrackPlayer; do
     bell_sources+=("$cspot/src/$name.cpp")
 done
 compile "$out/bell" bell_flags "${bell_sources[@]}"
