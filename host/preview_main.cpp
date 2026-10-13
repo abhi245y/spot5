@@ -26,6 +26,7 @@
 #include <map>
 
 #include "core/save_file.hpp"
+#include "nlohmann/json.hpp"
 #include "spotify/home.hpp"
 #include "gfx/canvas.hpp"
 #include "gfx/gl_program.hpp"
@@ -93,6 +94,8 @@ struct Beat
     Direction nav = Direction::none;
 };
 
+std::shared_ptr<const screens::Queue> fixture_queue();
+
 void playing(Model &m, const char *id, const char *title, const char *artist, const char *album,
              std::uint32_t at_ms, std::uint32_t length_ms)
 {
@@ -102,6 +105,7 @@ void playing(Model &m, const char *id, const char *title, const char *artist, co
     m.track = {id, title, artist, album, length_ms};
     m.position_ms = at_ms;
     m.paused = false;
+    m.queue = fixture_queue();
 }
 
 // Test covers (tests/covers, made with ffmpeg): textures and palettes.
@@ -145,6 +149,39 @@ std::shared_ptr<const screens::HomePage> load_home_fixture(const std::string &di
 std::string cover_file(const std::string &url)
 {
     return g_fixture + "/covers/" + std::to_string(std::hash<std::string>{}(url)) + ".jpg";
+}
+
+// A page's tracks from the fixture: context.json (URIs) + tracks.pb (details
+// for the first ones; the rest show as rows still loading).
+std::vector<screens::TrackRow> g_rows;
+
+void load_rows_fixture(const std::string &dir)
+{
+    std::string text, details;
+    if (!save::read_file(dir + "/context.json", &text))
+        return;
+    std::map<std::string, screens::TrackRow> known;
+    if (save::read_file(dir + "/tracks.pb", &details))
+        spotify::home::parse_tracks(details, known);
+    const auto json = nlohmann::json::parse(text, nullptr, false);
+    if (json.is_discarded())
+        return;
+    for (const auto &track : json["pages"][0]["tracks"])
+    {
+        const std::string uri = track.value("uri", "");
+        g_rows.push_back(known.count(uri) ? known[uri] : screens::TrackRow{uri});
+    }
+}
+
+std::shared_ptr<const screens::Queue> fixture_queue()
+{
+    if (g_rows.empty())
+        return nullptr;
+    auto queue = std::make_shared<screens::Queue>();
+    queue->tracks.assign(g_rows.begin(), g_rows.begin() + std::min<std::size_t>(g_rows.size(), 40));
+    queue->playing = 2;
+    queue->first = 0;
+    return queue;
 }
 
 // Covers by URL: the fixture's file if downloaded, else a test cover. URLs
@@ -205,6 +242,14 @@ const std::vector<Beat> &script()
              m.message.clear();
          }},
         {0.8f, [](Model &m) { m.step = Step::start; }},
+        {0.6f, [](Model &m) { m.step = Step::home; }},
+        {0.9f,
+         [](Model &m) {
+             m.step = Step::artwork;
+             m.artwork_done = 84;
+             m.artwork_total = 162;
+         },
+         0, "03c-launch-artwork"},
         {0.8f,
          [](Model &m) {
              m.connection = Connection::ready;
@@ -229,17 +274,31 @@ const std::vector<Beat> &script()
         {0.3f, nullptr, 0, nullptr, Direction::right},
         {0.3f, nullptr, 0, nullptr, Direction::right},
         {0.9f, nullptr, 0, "06c-home-scrolled", Direction::right},
-        {0.9f, nullptr, action_bit(Action::confirm), "06d-details"},
-        {0.4f, nullptr, 0, nullptr, Direction::down},           // Shuffle
-        {0.6f, nullptr, action_bit(Action::back), "06e-details-closing"},
+        {1.2f, nullptr, action_bit(Action::confirm), "06d-page"},
+        {0.3f, nullptr, 0, nullptr, Direction::down},           // into the list
+        {0.3f, nullptr, 0, nullptr, Direction::down},
+        {0.3f, nullptr, 0, nullptr, Direction::down},
+        {1.0f, nullptr, 0, "06e-page-list", Direction::down},
+        {0.8f, nullptr, action_bit(Action::back), "06e2-back-home"},
         {0.6f, [](Model &m) { m.notice = "This can't be played here yet"; ++m.notice_id; }, 0, "06f-notice"},
         {3.5f, [](Model &m) { playing(m, "a", "Aashiqana", "Chaar Diwaari", "Aashiqana", 47000, 214000); },
          0, nullptr},
         {0.8f, nullptr, 0, "06g-home-mini-player"},
         {0.3f, nullptr, action_bit(Action::north), "07-home-to-playing"},
+        {0.4f, nullptr, 0, nullptr},
         {0.4f, nullptr, 0, "08a-cover-pending"},
         {0.35f, [](Model &m) { with_cover(m, 0); }, 0, "08b-cover-fading-in"},
         {2.5f, nullptr, 0, "08-playing"},
+        {0.4f, nullptr, 0, nullptr, Direction::up},             // scrubber
+        {0.25f, nullptr, 0, nullptr, Direction::right},
+        {0.5f, nullptr, 0, "08b-scrubbing", Direction::right},
+        {0.3f, nullptr, 0, nullptr, Direction::down},           // transport
+        {0.3f, nullptr, 0, nullptr, Direction::down},           // queue
+        {0.3f, nullptr, 0, nullptr, Direction::down},
+        {0.6f, nullptr, 0, "08c-queue", Direction::down},
+        {0.4f, nullptr, action_bit(Action::back)},              // back to the transport
+        {0.6f, nullptr, action_bit(Action::west), "08d-queue-hidden"},
+        {0.6f, nullptr, action_bit(Action::west)},
         {1.2f, [](Model &m) { m.paused = true; }, 0, "09-paused"},
         {0.6f, [](Model &m) { m.paused = false; }},
         {0.3f,
@@ -336,6 +395,7 @@ int main(int argc, char **argv)
     g_fixture = assets + "/../tests/home-fixture";
     std::remove((g_fixture + "/missing-covers.txt").c_str());
     g_home = load_home_fixture(g_fixture);
+    load_rows_fixture(g_fixture);
     std::printf("home fixture: %s\n", g_home ? "loaded" : "none (tests/home-fixture/home.pb)");
     screens::Shell shell(context);
     Model model;
@@ -362,6 +422,16 @@ int main(int argc, char **argv)
             ui::Feedback feedback;
             std::vector<Command> commands;
             shell.update(model, input, kDt, feedback, commands);
+            for (const screens::Request &request : context.requests)
+                if (request.kind == screens::Request::Kind::open)
+                {
+                    auto page = std::make_shared<screens::PlaylistPage>();
+                    page->card = request.card;
+                    page->tracks = g_rows;
+                    page->loading = false;
+                    model.page = page;
+                }
+            context.requests.clear();
             // Pretend the session follows: playback advances while playing.
             if (model.has_track && !model.paused && model.connection == Connection::ready)
                 model.position_ms += static_cast<std::uint32_t>(kDt * 1000.0f);

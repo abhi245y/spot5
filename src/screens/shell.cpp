@@ -14,6 +14,7 @@
 #include "screens/home.hpp"
 #include "screens/launch.hpp"
 #include "screens/now_playing.hpp"
+#include "screens/playlist.hpp"
 #include "screens/style.hpp"
 
 namespace screens
@@ -30,7 +31,8 @@ constexpr float kSlide = 90.0f;        // how far a screen slides on a switch
 
 Shell::Shell(Context &context)
     : context_(context), launch_(make_launch(context)), home_(make_home(context)),
-      playing_(make_now_playing(context)), menu_(make_control_room(context))
+      playing_(make_now_playing(context)), menu_(make_control_room(context)),
+      page_(make_playlist(context))
 {
 }
 
@@ -48,6 +50,8 @@ Screen &Shell::screen(Id id)
         return *playing_;
     case Id::menu:
         return *menu_;
+    case Id::page:
+        return *page_;
     }
     return *launch_;
 }
@@ -62,12 +66,14 @@ Shell::Id Shell::wanted(const Model &model) const
         return Id::launch; // let the loader finish what it shows
     if (model.connection == Connection::connecting)
         return Id::launch;
-    return model.has_track && playing_open_ ? Id::playing : Id::home;
+    if (model.has_track && playing_open_)
+        return Id::playing;
+    return page_open_ && model.page ? Id::page : Id::home;
 }
 
 void Shell::go(Id next, Move move, float seconds)
 {
-    static const char *kNames[] = {"launch", "home", "playing", "control room"};
+    static const char *kNames[] = {"launch", "home", "playing", "control room", "page"};
     static const char *kMoves[] = {"none", "iris", "black", "slide"};
     sys::log("[UI] screen: %s -> %s (%s)", kNames[static_cast<int>(current_)],
              kNames[static_cast<int>(next)], kMoves[static_cast<int>(move)]);
@@ -86,15 +92,23 @@ void Shell::update(const Model &model, const InputFrame &input, float dt, ui::Fe
     clock_ += dt;
     transition_.update(dt);
 
-    // Home is the hub: Triangle opens Now Playing, Circle comes back.
-    if (!menu_open_ && current_ == Id::home && model.has_track && input.is_pressed(Action::north))
+    // Home is the hub: Triangle opens Now Playing, Circle steps back (Now
+    // Playing keeps Circle while its queue has the focus).
+    if (!menu_open_ && (current_ == Id::home || current_ == Id::page) && model.has_track &&
+        input.is_pressed(Action::north))
     {
         playing_open_ = true;
         feedback.play(audio::Cue::open);
     }
-    else if (!menu_open_ && current_ == Id::playing && input.is_pressed(Action::back))
+    else if (!menu_open_ && current_ == Id::playing && input.is_pressed(Action::back) &&
+             !now_playing_uses_back(*playing_))
     {
         playing_open_ = false;
+        feedback.play(audio::Cue::back);
+    }
+    else if (!menu_open_ && current_ == Id::page && input.is_pressed(Action::back))
+    {
+        page_open_ = false;
         feedback.play(audio::Cue::back);
     }
     if (!model.has_track)
@@ -125,6 +139,10 @@ void Shell::update(const Model &model, const InputFrame &input, float dt, ui::Fe
     else
     {
         screen(current_).update(model, input, dt, feedback, commands);
+        // Cross on a Home card asked for its page: show it.
+        for (const Request &request : context_.requests)
+            if (request.kind == Request::Kind::open)
+                page_open_ = true;
         if (current_ == Id::menu && control_room_wants_close(*menu_))
         {
             menu_open_ = false;
@@ -221,8 +239,11 @@ void Shell::compose(gfx::Renderer &renderer, const Model &model)
         const float travel = tween::quint_out(t);
         // Deeper screens arrive from the right: playing after home, the menu
         // after anything; going back slides the other way.
-        const float direction =
-            current_ == Id::menu || (current_ == Id::playing && previous_ != Id::menu) ? 1.0f : -1.0f;
+        const float direction = current_ == Id::menu ||
+                                         (current_ == Id::playing && previous_ != Id::menu) ||
+                                         (current_ == Id::page && previous_ == Id::home)
+                                     ? 1.0f
+                                     : -1.0f;
         record(old, previous_, model, out, -direction * slide * travel, 1.0f - 0.03f * travel);
         record(now, current_, model, in, direction * slide * (1.0f - travel),
                0.97f + 0.03f * travel);

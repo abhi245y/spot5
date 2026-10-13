@@ -7,7 +7,8 @@
 //     that takes the cover's colours;
 //   - the phone's shortcuts as a 2x4 grid of tiles, then shelves of covers
 //     with a spring-scrolled row, a grown focused card and a gliding ring;
-//   - Cross opens a frosted details sheet (Play / Shuffle / Close);
+//   - Cross opens the card's page (screens/playlist); R3 refreshes Home
+//     behind a frosted "Refreshing" dialog;
 //   - a slim now-playing bar at the bottom once something plays.
 
 #include "screens/home.hpp"
@@ -48,8 +49,6 @@ constexpr float kTileH = 84.0f;
 // Hero.
 const Rect kHeroArt{1316, 132, 440, 440};
 constexpr float kHeroTextWidth = 1120.0f;
-// Details sheet.
-constexpr int kActions = 3; // Play, Shuffle, Close
 // Now-playing bar.
 // Now-playing pill in the top bar, ending left of the account initial.
 const Rect kMiniBar{1740 - 26 - 560, 50, 560, 64};
@@ -90,7 +89,6 @@ class Home final : public Screen
     void enter() override
     {
         age_ = 0.0f;
-        sheet_open_ = false;
     }
 
     void update(const Model &model, const InputFrame &input, float dt, ui::Feedback &feedback,
@@ -100,14 +98,26 @@ class Home final : public Screen
         clock_ += dt;
         sync(model);
 
-        if (sheet_open_)
-            update_sheet(input, feedback);
+        if (refreshing_)
+        {
+            // The dialog holds the screen until the new Home is in.
+            seen_loading_ = seen_loading_ || model.home_loading;
+            refresh_age_ += dt;
+            if ((seen_loading_ && !model.home_loading) || (!seen_loading_ && refresh_age_ > 1.5f))
+            {
+                refreshing_ = false;
+                feedback.play(audio::Cue::modal_close);
+            }
+        }
         else if (!shelves().empty())
             update_shelves(input, feedback);
-        if (!sheet_open_ && input.is_pressed(Action::r3))
+        if (!refreshing_ && input.is_pressed(Action::r3))
         {
-            feedback.play(audio::Cue::select);
+            feedback.play(audio::Cue::modal_open);
             commands.push_back(Command::refresh_home);
+            refreshing_ = true;
+            seen_loading_ = false;
+            refresh_age_ = 0.0f;
         }
 
         // ---- animation ----
@@ -135,10 +145,8 @@ class Home final : public Screen
             ring_.target(focus_rect(row_, rows_[static_cast<std::size_t>(row_)].index));
         ring_.update(dt, 20.0f);
         nudge_.update(dt, 9.0f);
-        sheet_.target = sheet_open_ ? 1.0f : 0.0f;
-        sheet_.update(dt, context_.settings.reduced_motion ? 40.0f : 13.0f);
-        action_position_.target = static_cast<float>(action_);
-        action_position_.update(dt, 22.0f);
+        dialog_.target = refreshing_ ? 1.0f : 0.0f;
+        dialog_.update(dt, context_.settings.reduced_motion ? 40.0f : 13.0f);
         mini_.target = model.has_track ? 1.0f : 0.0f;
         mini_.update(dt, 9.0f);
         if (model.notice_id != notice_id_)
@@ -160,7 +168,7 @@ class Home final : public Screen
         frame.backdrop.time = context_.settings.reduced_motion ? 0.0f : clock_;
 
         gfx::DrawList &list = frame.scene;
-        const float back = sheet_.value;
+        const float back = dialog_.value;
         list.push_transform(1.0f - 0.035f * back, 960, 540, 0, 0);
         draw_top_bar(list, model);
         if (shelves().empty())
@@ -181,7 +189,7 @@ class Home final : public Screen
             list.rounded_rect({0, 0, gfx::kVirtualWidth, gfx::kVirtualHeight}, 0,
                               Color::rgb(0x05070f, 0.45f * back));
             frame.glass = true;
-            draw_sheet(frame.overlay, frame.glass_texture);
+            draw_refreshing(frame.overlay, frame.glass_texture);
         }
         draw_notice(frame.overlay);
         if (back <= 0.5f)
@@ -369,42 +377,11 @@ class Home final : public Screen
         }
         if (input.is_pressed(Action::confirm) && focused_card())
         {
-            sheet_open_ = true;
-            action_ = 0;
-            action_position_.snap(0.0f);
+            Request request;
+            request.kind = Request::Kind::open;
+            request.card = *focused_card();
+            context_.requests.push_back(request);
             feedback.play(audio::Cue::open);
-        }
-    }
-
-    void update_sheet(const InputFrame &input, ui::Feedback &feedback)
-    {
-        if (input.nav == Direction::up || input.nav == Direction::down)
-        {
-            const int next = std::clamp(action_ + (input.nav == Direction::down ? 1 : -1), 0, kActions - 1);
-            if (next != action_)
-            {
-                action_ = next;
-                feedback.play(audio::Cue::focus, 1.0f, 0.35f);
-            }
-        }
-        if (input.is_pressed(Action::confirm))
-        {
-            if (action_ < 2 && focused_card())
-            {
-                Request request;
-                request.play = PlayRequest{focused_card()->uri, action_ == 1, 0};
-                context_.requests.push_back(request);
-                feedback.play(audio::Cue::launch);
-                feedback.rumble(0.7f, 0.18f);
-            }
-            else
-                feedback.play(audio::Cue::modal_close);
-            sheet_open_ = false;
-        }
-        if (input.is_pressed(Action::back))
-        {
-            feedback.play(audio::Cue::back);
-            sheet_open_ = false;
         }
     }
 
@@ -647,55 +624,22 @@ class Home final : public Screen
         list.pop_opacity();
     }
 
-    void draw_sheet(gfx::DrawList &list, std::uint32_t glass) const
+    // R3: a frosted dialog over Home while the new one is fetched.
+    void draw_refreshing(gfx::DrawList &list, std::uint32_t glass) const
     {
-        const Card *focused = focused_card();
-        if (!focused)
-            return;
-        const Card &card = *focused;
         const ui::Fonts &fonts = context_.fonts;
-        const float t = sheet_.value;
-        constexpr float kHeight = 500.0f;
-        const Rect sheet{120, gfx::kVirtualHeight - kHeight * t - 40.0f * t + 60.0f * (1.0f - t), 1680,
-                         kHeight};
+        const float t = dialog_.value;
+        const Rect panel{kCentreX - 330, kCentreY - 110 + 30.0f * (1.0f - t), 660, 220};
         list.push_opacity(tween::clamp01(t * 1.4f));
-        list.shadow({sheet.x, sheet.y + 20, sheet.w, sheet.h}, 44, 60, Color::rgb(0x000000, 0.5f));
-        // Frosted panel: the blurred screen, a tint, then a hairline of light.
-        list.glass(glass, sheet, 44, kWhite);
-        list.rounded_rect(sheet, 44, gfx::mix(palette_[0].value(), Color::rgb(0x0b0d16), 0.5f).with_alpha(0.62f));
-        list.bordered_rect(sheet, 44, Color::rgb(0x000000, 0.0f), 1.5f, kWhite.with_alpha(0.22f));
-
-        const Rect cover{sheet.x + 56, sheet.y + 56, 300, 300};
-        draw_cover(list, card, art(card.image_large).texture ? card.image_large : card.image, cover, 28, 1.0f);
-        const float x = cover.x + cover.w + 56;
-        const float text_width = 760.0f;
-        ui::text(list, fonts.semibold, ui::upper(card.subtitle), x, sheet.y + 92, 20, accent(),
-                 gfx::Align::left, 4.0f);
-        ui::text(list, fonts.display, fonts.display.font->fit(card.title, 60, text_width), x - 2,
-                 sheet.y + 156, 60, kWhite);
-        ui::paragraph(list, fonts.regular, plain_text(card.description), x, sheet.y + 212, 25, text_width,
-                      36, kWhite.with_alpha(0.82f), 5);
-
-        // Actions: one highlight that springs between the rows.
-        const char *actions[kActions] = {"Play", "Shuffle", "Close"};
-        const float ax = sheet.x + sheet.w - 56 - 420;
-        const float ay = sheet.y + 76;
-        list.rounded_rect({ax, ay + action_position_.value * 84, 420, 72}, 36, kWhite);
-        for (int i = 0; i < kActions; ++i)
-        {
-            const bool on = i == action_;
-            const float y = ay + static_cast<float>(i) * 84;
-            if (!on)
-                list.bordered_rect({ax, y, 420, 72}, 36, kWhite.with_alpha(0.06f), 1.5f,
-                                   kWhite.with_alpha(0.18f));
-            ui::text(list, fonts.semibold, actions[i], ax + 36, y + 46, 26,
-                     on ? Color::rgb(0x0b0d16) : kWhite.with_alpha(0.9f));
-        }
-        // Hints inside the panel, at its own bottom-right corner.
-        ui::HintLayout inside;
-        inside.cy = sheet.y + sheet.h - 52;
-        const ui::Hint hints[] = {{ui::Button::cross, "Choose"}, {ui::Button::circle, "Back"}};
-        ui::draw_hints(list, fonts, ui::GlyphStyle::dark(), hints, 2, sheet.x + sheet.w - 56, true, inside);
+        list.shadow({panel.x, panel.y + 18, panel.w, panel.h}, 36, 50, Color::rgb(0x000000, 0.5f));
+        list.glass(glass, panel, 36, kWhite);
+        list.rounded_rect(panel, 36, gfx::mix(palette_[0].value(), Color::rgb(0x0b0d16), 0.5f).with_alpha(0.62f));
+        list.bordered_rect(panel, 36, Color::rgb(0x000000, 0.0f), 1.5f, kWhite.with_alpha(0.22f));
+        list.arc(panel.x + 70, panel.cy(), 22, 4, 0.0f, kTau, kWhite.with_alpha(0.12f));
+        list.arc(panel.x + 70, panel.cy(), 22, 4, clock_ * 5.5f, 2.2f, accent());
+        ui::text(list, fonts.semibold, "Refreshing your Home", panel.x + 120, panel.cy() - 6, 32, kWhite);
+        ui::text(list, fonts.regular, "Shelves, mixes and artwork", panel.x + 120, panel.cy() + 34, 24,
+                 kWhite.with_alpha(0.7f));
         list.pop_opacity();
     }
 
@@ -722,11 +666,11 @@ class Home final : public Screen
     {
         const ui::Fonts &fonts = context_.fonts;
         const ui::GlyphStyle style = ui::GlyphStyle::dark();
-        list.push_opacity(tween::stagger(age_, 8, 0.08f, 0.5f) * (1.0f - sheet_.value));
+        list.push_opacity(tween::stagger(age_, 8, 0.08f, 0.5f) * (1.0f - dialog_.value));
         ui::Hint hints[4];
         int count = 0;
         if (focused_card())
-            hints[count++] = {ui::Button::cross, "Details"};
+            hints[count++] = {ui::Button::cross, "Open"};
         if (model.has_track)
             hints[count++] = {ui::Button::triangle, "Now Playing"};
         hints[count++] = {ui::Button::right_stick, "Refresh"};
@@ -749,10 +693,10 @@ class Home final : public Screen
     ui::SpringRect ring_;
     ui::Pulse nudge_;
     float nudge_direction_ = 0.0f;
-    bool sheet_open_ = false;
-    tween::Spring sheet_;
-    int action_ = 0;
-    tween::Spring action_position_;
+    bool refreshing_ = false;   // R3 dialog up
+    bool seen_loading_ = false; // ... and the fetch has started
+    float refresh_age_ = 0.0f;
+    tween::Spring dialog_;
     tween::Spring mini_;
     std::uint32_t notice_id_ = 0;
     std::string notice_;

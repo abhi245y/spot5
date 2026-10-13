@@ -1,8 +1,9 @@
 // ps5-spotify - Chooses the screen, moves between screens, owns the overlays.
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-//   launch  --(ready, loader done)--> home or now playing   iris
-//   home   <--(a track arrives / ends)--> now playing        slide
+//   launch  --(ready, loader done)--> home                  iris
+//   home   <--(Cross on a card / Circle)--> page             slide
+//   home, page <--(Triangle / Circle)--> now playing         slide
 //   any    --(connection error)--> launch (shows the error)  through black
 //   any   <--(touchpad / Back)--> Control Room                 slide
 // Overlay on every screen: a "Reconnecting" pill.
@@ -41,6 +42,7 @@ class Shell
         home,
         playing,
         menu, // Control Room
+        page, // a playlist/album opened from Home
     };
     enum class Move
     {
@@ -57,9 +59,10 @@ class Shell
     void draw_overlays(gfx::DrawList &list, const Model &model);
 
     Context &context_;
-    std::unique_ptr<Screen> launch_, home_, playing_, menu_;
+    std::unique_ptr<Screen> launch_, home_, playing_, menu_, page_;
     bool menu_open_ = false;
-    bool playing_open_ = false; // Triangle on Home opens Now Playing; Circle closes it
+    bool playing_open_ = false; // Triangle on Home or a page opens Now Playing; Circle closes it
+    bool page_open_ = false;    // Cross on a Home card; Circle closes it
     Id current_ = Id::launch;
     Id previous_ = Id::launch;
     Move move_ = Move::none;

@@ -17,4 +17,8 @@ namespace screens
 
 std::unique_ptr<Screen> make_now_playing(Context &context);
 
+// True while Now Playing handles Circle itself (its queue has the focus);
+// otherwise Circle leaves the screen.
+bool now_playing_uses_back(const Screen &screen);
+
 } // namespace screens
