@@ -43,7 +43,7 @@ common_defs=(-DBELL_DISABLE_FMT -DBELL_DISABLE_REGEX -DPB_ENABLE_MALLOC -DPB_FIE
     "-DMBEDTLS_USER_CONFIG_FILE=\"$root/src/platform/mbedtls_ps5_config.h\"")
 includes=(-I"$mbedtls/include" -I"$bell/main/io/include" -I"$bell/main/utilities/include"
     -I"$bell/main/platform" -I"$bell/external/nanopb" -I"$bell/external/nlohmann_json/include"
-    -I"$cspot/include" -I"$gen")
+    -I"$cspot/include" -I"$gen" -I"$bell/external/tremor")
 bell_flags=(-std=c++17 -O2 -w -fexceptions -frtti -ffunction-sections -fdata-sections
     "${common_defs[@]}" "${includes[@]}")
 bell_c_flags=(-std=c11 -O2 -w -ffunction-sections -fdata-sections
@@ -89,14 +89,16 @@ bell_sources=(
     "$bell/main/utilities/NanoPBExtensions.cpp"
     "$bell/main/platform/linux/WrappedSemaphore.cpp"
 )
-# ponytail: login + Mercury only; playback files join with the audio layer.
+# ponytail: no spirc/TrackPlayer yet; they join with phone control.
 for name in AccessKeyFetcher ApResolve AuthChallenges LoginBlob MercurySession \
-    PlainConnection Session ShannonConnection Shannon TimeProvider Utils; do
+    PlainConnection Session ShannonConnection Shannon TimeProvider Utils \
+    TrackQueue TrackReference CDNAudioFile PlaybackState; do
     bell_sources+=("$cspot/src/$name.cpp")
 done
 compile "$out/bell" bell_flags "${bell_sources[@]}"
 compile "$out/bell-c" bell_c_flags "$bell/main/io/picohttpparser.c" "$bell/main/utilities/aes.c" \
     "$bell/external/nanopb/pb_common.c" "$bell/external/nanopb/pb_decode.c" \
-    "$bell/external/nanopb/pb_encode.c" "$gen"/protobuf/*.pb.c
+    "$bell/external/nanopb/pb_encode.c" "$gen"/protobuf/*.pb.c \
+    $(ls "$bell"/external/tremor/*.c | grep -v ivorbisfile_example)
 rm -f "$out/libbell.a" && llvm-ar rcs "$out/libbell.a" "$out"/bell/*.o "$out"/bell-c/*.o
 echo "deps: $out/libmbedtls.a $out/libbell.a"
