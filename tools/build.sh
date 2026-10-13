@@ -269,6 +269,8 @@ for asset in icon0.png pic0.dds pic1.dds snd0.at9; do
     [[ -f $root/sce_sys/$asset ]] && cp "$root/sce_sys/$asset" "$app/sce_sys/$asset"
 done
 [[ ! -d $root/assets ]] || cp -a "$root/assets" "$app/assets"
+# ps5-spotify: the mDNS helper payload the app hands to elfldr while pairing.
+[[ ! -f $build/mdns-helper.elf ]] || cp "$build/mdns-helper.elf" "$app/assets/"
 # Directory listing returns nothing under /app0 on the console, so each
 # audio folder carries an index of its files (read by save::list_files).
 for dir in "$app/assets/audio/music" "$app"/assets/audio/sfx/*/; do

@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // While a Pairing exists, the console is advertised on the local network
-// (mDNS, _spotify-connect._tcp) and a small web server answers the phone:
+// (mDNS, _spotify-connect._tcp, by a helper payload: apps may not use the
+// mDNS port) and a small web server answers the phone:
 //   GET  /spotify_info   who we are, and our half of the key exchange
 //   POST /spotify_info   the phone's encrypted login
 // The web server's threads only copy strings; decrypting the login happens
@@ -23,7 +24,6 @@
 namespace bell
 {
 class BellHTTPServer;
-class MDNSService;
 } // namespace bell
 
 namespace cspot
@@ -38,7 +38,7 @@ class Pairing
 {
   public:
     // Starts advertising as `device_name`. Returns nullptr and sets `error`
-    // (a message for the user) if the web server or mDNS cannot start.
+    // (a message for the user) if the web server or the helper cannot start.
     static std::unique_ptr<Pairing> start(const std::string &device_name, std::string &error);
 
     // Stops advertising and the web server.
@@ -55,7 +55,6 @@ class Pairing
 
     std::shared_ptr<cspot::LoginBlob> blob_;
     std::unique_ptr<bell::BellHTTPServer> server_;
-    std::unique_ptr<bell::MDNSService> mdns_;
     std::string info_json_; // GET reply, built once on the caller's thread
 
     std::mutex lock_; // guards query_ (web server thread -> caller)

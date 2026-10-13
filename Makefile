@@ -36,9 +36,17 @@ APP_IMPORT_STUBS := $(OPENGL_SDK)/lib/libSceAgc.so $(OPENGL_SDK)/lib/libSceAgcDr
 export PS5_CLANG USE_CCACHE PS5_HOST FTP_PORT PS5_FTP_USER PS5_FTP_PASSWORD DEPLOY_DRY_RUN
 export APP_DEFINITIONS APP_INCLUDE_PATHS APP_STATIC_ARCHIVES APP_IMPORT_STUBS
 
-.PHONY: app deps opengl deploy clean
-app: build/deps/libbell.a opengl
+.PHONY: app deps opengl deploy clean helper
+app: build/deps/libbell.a opengl helper
 	@bash tools/build.sh
+# The mDNS helper payload (sent to elfldr while pairing): payload SDK, plain C.
+MDNSSVC := $(BELL)/external/mdnssvc
+PAYLOAD_SDK := $(abspath .deps/native/ps5-payload-sdk)
+helper: build/mdns-helper.elf
+build/mdns-helper.elf: helper/mdns_helper.c $(MDNSSVC)/mdns.c $(MDNSSVC)/mdnsd.c
+	@mkdir -p build
+	PS5_PAYLOAD_SDK=$(PAYLOAD_SDK) $(PAYLOAD_SDK)/bin/prospero-clang -O2 -Wall -I$(MDNSSVC) \
+		-o $@ $^ -lpthread
 deps:
 	@bash tools/build-deps.sh
 build/deps/libbell.a:

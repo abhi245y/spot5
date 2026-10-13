@@ -3,12 +3,17 @@
 
 #include "spotify/pairing.hpp"
 
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <unistd.h>
+
 #include <algorithm>
 #include <exception>
 
 #include "BellHTTPServer.h"
 #include "LoginBlob.h"
-#include "MDNSService.h"
+#include "app/config.hpp"
 #include "platform/ps5/system.hpp"
 
 namespace spotify
@@ -16,6 +21,50 @@ namespace spotify
 
 namespace
 {
+
+// Apps may not bind the mDNS port (EACCES), payloads may: elfldr runs the
+// helper (helper/mdns_helper.c), which advertises us while this server
+// answers and exits by itself afterwards.
+constexpr const char *kHelper = "/app0/assets/mdns-helper.elf";
+constexpr int kElfLoaderPort = 9021;
+
+bool send_helper(std::string &error)
+{
+    const std::string elf = app::read_file(kHelper);
+    if (elf.empty())
+    {
+        error = std::string("Missing ") + kHelper;
+        return false;
+    }
+    const int fd = socket(AF_INET, SOCK_STREAM, 0);
+    sockaddr_in loader{};
+    loader.sin_len = sizeof(loader);
+    loader.sin_family = AF_INET;
+    loader.sin_port = htons(kElfLoaderPort);
+    loader.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    if (fd < 0 || connect(fd, reinterpret_cast<sockaddr *>(&loader), sizeof(loader)) != 0)
+    {
+        if (fd >= 0)
+            close(fd);
+        error = "Pairing needs the ELF loader running (port 9021)";
+        return false;
+    }
+    size_t sent = 0;
+    while (sent < elf.size())
+    {
+        const ssize_t now = send(fd, elf.data() + sent, elf.size() - sent, 0);
+        if (now <= 0)
+            break;
+        sent += static_cast<size_t>(now);
+    }
+    close(fd); // end of file: elfldr starts the helper
+    if (sent != elf.size())
+    {
+        error = "Could not hand the pairing helper to the ELF loader";
+        return false;
+    }
+    return true;
+}
 
 constexpr int kPort = 7864; // same as cspot's CLI
 // A real login is about 1 KB; refuse anything far larger from the network.
@@ -67,24 +116,15 @@ std::unique_ptr<Pairing> Pairing::start(const std::string &device_name, std::str
         return self->server_->makeJsonResponse(kPostReply);
     });
 
-    // TXT record as cspot's CLI: tells the phone where to GET/POST.
-    pairing->mdns_ = bell::MDNSService::registerService(
-        device_name, "_spotify-connect", "_tcp", "", kPort,
-        {{"VERSION", "1.0"}, {"CPath", "/spotify_info"}, {"Stack", "SP"}});
-    if (!pairing->mdns_)
-    {
-        error = "Could not advertise on the network (mDNS)";
+    if (!send_helper(error))
         return nullptr;
-    }
-    hui::sys::log("[APP] pairing: advertising \"%s\" on port %d", device_name.c_str(), kPort);
+    hui::sys::log("[APP] pairing: \"%s\" on port %d, mDNS helper sent", device_name.c_str(), kPort);
     return pairing;
 }
 
 Pairing::~Pairing()
 {
-    if (mdns_)
-        mdns_->unregisterService();
-    // Stop the server (joins its threads) before the handlers' `this` goes.
+    // The helper sees the server gone and stops advertising. Stop the server (joins its threads) before the handlers' `this` goes.
     if (server_)
         server_->close();
 }
