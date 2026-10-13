@@ -51,7 +51,8 @@ constexpr float kHeroTextWidth = 1120.0f;
 // Details sheet.
 constexpr int kActions = 3; // Play, Shuffle, Close
 // Now-playing bar.
-const Rect kMiniBar{kMargin, 972, 700, 72};
+// Now-playing pill in the top bar, ending left of the account initial.
+const Rect kMiniBar{1740 - 26 - 560, 50, 560, 64};
 constexpr float kNoticeSeconds = 3.2f;
 
 // Spotify descriptions may carry links (<a href=...>name</a>); keep the text.
@@ -183,7 +184,8 @@ class Home final : public Screen
             draw_sheet(frame.overlay, frame.glass_texture);
         }
         draw_notice(frame.overlay);
-        draw_hints(back > 0.5f ? frame.overlay : frame.scene, model);
+        if (back <= 0.5f)
+            draw_hints(frame.scene, model);
     }
 
   private:
@@ -447,7 +449,8 @@ class Home final : public Screen
                      Color::rgb(0x0b0d16), gfx::Align::center);
         }
         if (model.home_loading)
-            list.arc(1740, 82, 12, 3, clock_ * 5.5f, 2.2f, kWhite.with_alpha(0.7f));
+            list.arc(model.has_track ? kMiniBar.x - 34 : 1740, 82, 12, 3, clock_ * 5.5f, 2.2f,
+                     kWhite.with_alpha(0.7f));
         list.pop_opacity();
     }
 
@@ -607,7 +610,7 @@ class Home final : public Screen
         if (shown <= 0.01f || !model.has_track)
             return;
         const ui::Fonts &fonts = context_.fonts;
-        const Rect bar{kMiniBar.x, kMiniBar.y + 30.0f * (1.0f - shown), kMiniBar.w, kMiniBar.h};
+        const Rect bar{kMiniBar.x + 30.0f * (1.0f - shown), kMiniBar.y, kMiniBar.w, kMiniBar.h};
         list.push_opacity(shown);
         list.shadow({bar.x, bar.y + 10, bar.w, bar.h}, 18, 30, Color::rgb(0x000000, 0.5f));
         list.rounded_rect(bar, 18, Color::rgb(0x0b0d16, 0.82f));
@@ -619,18 +622,18 @@ class Home final : public Screen
             list.rounded_rect(cover, 8, kWhite.with_alpha(0.1f));
         const float x = cover.x + cover.w + 18;
         const float width = bar.w - (x - bar.x) - 70;
-        ui::text(list, fonts.semibold, fonts.semibold.font->fit(model.track.title, 23, width), x,
-                 bar.y + 32, 23, kWhite);
-        ui::text(list, fonts.regular, fonts.regular.font->fit(model.track.artist, 20, width), x,
-                 bar.y + 58, 20, kWhite.with_alpha(0.65f));
+        ui::text(list, fonts.semibold, fonts.semibold.font->fit(model.track.title, 22, width), x,
+                 bar.y + 29, 22, kWhite);
+        ui::text(list, fonts.regular, fonts.regular.font->fit(model.track.artist, 19, width), x,
+                 bar.y + 53, 19, kWhite.with_alpha(0.65f));
         // Play state at the right; progress as a hairline along the bottom.
         const float px = bar.x + bar.w - 40;
         if (model.paused)
-            list.triangle({px - 10, bar.cy() - 12, 22, 24}, kWhite, 0.0f, 1.5708f);
+            list.triangle({px - 9, bar.cy() - 10, 18, 20}, kWhite, 0.0f, 1.5708f);
         else
         {
-            list.rounded_rect({px - 10, bar.cy() - 12, 7, 24}, 2, kWhite);
-            list.rounded_rect({px + 3, bar.cy() - 12, 7, 24}, 2, kWhite);
+            list.rounded_rect({px - 8, bar.cy() - 10, 6, 20}, 2, kWhite);
+            list.rounded_rect({px + 3, bar.cy() - 10, 6, 20}, 2, kWhite);
         }
         if (model.track.duration_ms > 0)
         {
@@ -686,6 +689,11 @@ class Home final : public Screen
             ui::text(list, fonts.semibold, actions[i], ax + 36, y + 46, 26,
                      on ? Color::rgb(0x0b0d16) : kWhite.with_alpha(0.9f));
         }
+        // Hints inside the panel, at its own bottom-right corner.
+        ui::HintLayout inside;
+        inside.cy = sheet.y + sheet.h - 52;
+        const ui::Hint hints[] = {{ui::Button::cross, "Choose"}, {ui::Button::circle, "Back"}};
+        ui::draw_hints(list, fonts, ui::GlyphStyle::dark(), hints, 2, sheet.x + sheet.w - 56, true, inside);
         list.pop_opacity();
     }
 
@@ -712,12 +720,6 @@ class Home final : public Screen
     {
         const ui::Fonts &fonts = context_.fonts;
         const ui::GlyphStyle style = ui::GlyphStyle::dark();
-        if (sheet_open_)
-        {
-            const ui::Hint hints[] = {{ui::Button::cross, "Choose"}, {ui::Button::circle, "Back"}};
-            ui::draw_hints(list, fonts, style, hints, 2, kRight, true);
-            return;
-        }
         list.push_opacity(tween::stagger(age_, 8, 0.08f, 0.5f) * (1.0f - sheet_.value));
         ui::Hint hints[4];
         int count = 0;

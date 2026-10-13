@@ -124,6 +124,9 @@ class NowPlaying final : public Screen
                                                 : style::album_palette(model.track.album),
                         model.track.art};
             apply_palette(previous_.title.empty() && !swap_.running);
+            // The cover may already be here (the track started while another
+            // screen was showing): then it is simply visible.
+            art_in_.snap(model.track.art ? 1.0f : 0.0f);
             travel_ = next_travel_;
             next_travel_ = 1.0f;
         }
