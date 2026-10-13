@@ -624,14 +624,14 @@ class Home final : public Screen
         const ui::Fonts &fonts = context_.fonts;
         const ui::GlyphStyle style = ui::GlyphStyle::dark();
         list.push_opacity(tween::stagger(age_, 8, 0.08f, 0.5f) * (1.0f - dialog_.value));
-        ui::Hint hints[4];
+        ui::Hint hints[5];
         int count = 0;
         if (focused_card())
             hints[count++] = {ui::Button::cross, "Open"};
         if (model.has_track)
             hints[count++] = {ui::Button::triangle, "Now Playing"};
+        hints[count++] = {ui::Button::l1, "Library", ui::Button::r1};
         hints[count++] = {ui::Button::right_stick, "Refresh"};
-        hints[count++] = {ui::Button::touchpad, "Settings"};
         ui::draw_hints(list, fonts, style, hints, count, kRight, true);
         list.pop_opacity();
     }

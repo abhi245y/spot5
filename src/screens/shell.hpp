@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 //   launch  --(ready, loader done)--> home                  iris
-//   home   <--(Cross on a card / Circle)--> page             slide
-//   home, page <--(Triangle / Circle)--> now playing         slide
+//   home  <--(L1 / R1)--> library                             slide
+//   home, library <--(Cross on a card / Circle)--> page or artist (stacked:
+//   artist -> album page -> Circle -> artist)                  slide
+//   any of those <--(Triangle / Circle)--> now playing          slide
 //   any    --(connection error)--> launch (shows the error)  through black
 //   any   <--(touchpad / Back)--> Control Room                 slide
 // Overlay on every screen: a "Reconnecting" pill.
@@ -42,7 +44,9 @@ class Shell
         home,
         playing,
         menu, // Control Room
-        page, // a playlist/album opened from Home
+        page,    // a playlist/album opened from Home, Library or an artist
+        library, // the Library tab
+        artist,  // an artist opened from Home or Library
     };
     enum class Move
     {
@@ -59,10 +63,11 @@ class Shell
     void draw_overlays(gfx::DrawList &list, const Model &model);
 
     Context &context_;
-    std::unique_ptr<Screen> launch_, home_, playing_, menu_, page_;
+    std::unique_ptr<Screen> launch_, home_, playing_, menu_, page_, library_, artist_;
     bool menu_open_ = false;
     bool playing_open_ = false; // Triangle on Home or a page opens Now Playing; Circle closes it
-    bool page_open_ = false;    // Cross on a Home card; Circle closes it
+    bool library_tab_ = false;  // L1 / R1 between Home and Library
+    std::vector<Id> stack_;     // pages opened over the tab (page / artist), newest last
     Id current_ = Id::launch;
     Id previous_ = Id::launch;
     Move move_ = Move::none;

@@ -6,6 +6,7 @@
 #include <cstdlib>
 
 #include "nlohmann/json.hpp"
+#include "spotify/text.hpp"
 
 namespace spotify::library
 {
@@ -52,7 +53,7 @@ std::string names(const json &artists)
         return out;
     for (const json &artist : artists["items"])
     {
-        const std::string name = artist.contains("profile") ? artist["profile"].value("name", "") : "";
+        const std::string name = artist.contains("profile") ? drawable(artist["profile"].value("name", "")) : "";
         if (!name.empty())
             out += (out.empty() ? "" : ", ") + name;
     }
@@ -75,7 +76,7 @@ screens::Card release_card(const json &release, const char *type)
 {
     screens::Card card;
     card.uri = release.value("uri", "");
-    card.title = release.value("name", "");
+    card.title = drawable(release.value("name", ""));
     const int year = release.contains("date") ? release["date"].value("year", 0) : 0;
     card.subtitle = std::string(type) + (year ? " \xC2\xB7 " + std::to_string(year) : "");
     card.image = pick(release.value("coverArt", json()), 300);
@@ -137,10 +138,10 @@ bool parse_library_page(const std::string &reply, std::vector<screens::LibraryIt
             if (type == "PlaylistResponseWrapper")
             {
                 out.kind = screens::LibraryItem::Kind::playlist;
-                out.card.title = data.value("name", "");
-                out.card.description = data.value("description", "");
+                out.card.title = drawable(data.value("name", ""));
+                out.card.description = drawable(data.value("description", ""));
                 if (data.contains("ownerV2") && data["ownerV2"].contains("data"))
-                    out.creator = data["ownerV2"]["data"].value("name", "");
+                    out.creator = drawable(data["ownerV2"]["data"].value("name", ""));
                 if (data.contains("images") && data["images"].contains("items") && !data["images"]["items"].empty())
                     out.card.image = out.card.image_large = pick(data["images"]["items"][0], 0);
                 out.card.subtitle = "Playlist" + (out.creator.empty() ? "" : " \xC2\xB7 " + out.creator);
@@ -148,7 +149,7 @@ bool parse_library_page(const std::string &reply, std::vector<screens::LibraryIt
             else if (type == "AlbumResponseWrapper")
             {
                 out.kind = screens::LibraryItem::Kind::album;
-                out.card.title = data.value("name", "");
+                out.card.title = drawable(data.value("name", ""));
                 out.creator = names(data.value("artists", json()));
                 out.card.image = pick(data.value("coverArt", json()), 300);
                 out.card.image_large = pick(data.value("coverArt", json()), 640);
@@ -157,7 +158,7 @@ bool parse_library_page(const std::string &reply, std::vector<screens::LibraryIt
             else if (type == "ArtistResponseWrapper")
             {
                 out.kind = screens::LibraryItem::Kind::artist;
-                out.card.title = data.contains("profile") ? data["profile"].value("name", "") : "";
+                out.card.title = data.contains("profile") ? drawable(data["profile"].value("name", "")) : "";
                 if (data.contains("visuals"))
                 {
                     out.card.image = pick(data["visuals"].value("avatarImage", json()), 300);
@@ -170,7 +171,7 @@ bool parse_library_page(const std::string &reply, std::vector<screens::LibraryIt
             else if (type == "LibraryPseudoPlaylistResponseWrapper" && out.card.uri == "spotify:collection:tracks")
             {
                 out.kind = screens::LibraryItem::Kind::collection;
-                out.card.title = data.value("name", "Liked Songs");
+                out.card.title = drawable(data.value("name", "Liked Songs"));
                 out.card.image = pick(data.value("image", json()), 300);
                 out.card.image_large = pick(data.value("image", json()), 640);
                 out.card.subtitle = "Playlist \xC2\xB7 " + std::to_string(data.value("count", 0)) + " songs";
@@ -199,7 +200,7 @@ bool parse_artist(const std::string &reply, screens::ArtistPage &page)
     {
         const json &artist = doc.at("data").at("artistUnion");
         page.card.uri = artist.value("uri", page.card.uri);
-        page.card.title = artist.at("profile").value("name", page.card.title);
+        page.card.title = drawable(artist.at("profile").value("name", page.card.title));
         page.card.subtitle = "Artist";
         page.card.round = true;
         if (artist.contains("visuals"))
@@ -215,7 +216,7 @@ bool parse_artist(const std::string &reply, screens::ArtistPage &page)
             artist["stats"]["monthlyListeners"].is_number())
             page.listeners = with_commas(artist["stats"]["monthlyListeners"].get<long long>()) + " monthly listeners";
         if (artist.at("profile").contains("biography") && artist["profile"]["biography"].is_object())
-            page.biography = artist["profile"]["biography"].value("text", "");
+            page.biography = drawable(artist["profile"]["biography"].value("text", ""));
 
         const json &discography = artist.at("discography");
         for (const json &entry : discography.at("topTracks").at("items"))
@@ -223,7 +224,7 @@ bool parse_artist(const std::string &reply, screens::ArtistPage &page)
             const json &track = entry.at("track");
             screens::TrackRow row;
             row.uri = track.value("uri", "");
-            row.title = track.value("name", "");
+            row.title = drawable(track.value("name", ""));
             row.artists = names(track.value("artists", json()));
             if (track.contains("duration"))
                 row.duration_ms = track["duration"].value("totalMilliseconds", 0u);
@@ -299,7 +300,7 @@ bool from_json(const std::string &text, screens::Library &library, long long &fe
             item.card.uri = j.at("uri").get<std::string>();
             item.card.title = j.at("title").get<std::string>();
             item.card.subtitle = j.value("subtitle", "");
-            item.card.description = j.value("description", "");
+            item.card.description = drawable(j.value("description", ""));
             item.card.image = j.value("image", "");
             item.card.image_large = j.value("image_large", "");
             item.card.wide = j.value("wide", "");

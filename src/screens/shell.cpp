@@ -14,6 +14,8 @@
 #include "screens/home.hpp"
 #include "screens/launch.hpp"
 #include "screens/now_playing.hpp"
+#include "screens/artist.hpp"
+#include "screens/library.hpp"
 #include "screens/playlist.hpp"
 #include "screens/style.hpp"
 
@@ -32,7 +34,7 @@ constexpr float kSlide = 90.0f;        // how far a screen slides on a switch
 Shell::Shell(Context &context)
     : context_(context), launch_(make_launch(context)), home_(make_home(context)),
       playing_(make_now_playing(context)), menu_(make_control_room(context)),
-      page_(make_playlist(context))
+      page_(make_playlist(context)), library_(make_library(context)), artist_(make_artist(context))
 {
 }
 
@@ -52,6 +54,10 @@ Screen &Shell::screen(Id id)
         return *menu_;
     case Id::page:
         return *page_;
+    case Id::library:
+        return *library_;
+    case Id::artist:
+        return *artist_;
     }
     return *launch_;
 }
@@ -68,12 +74,14 @@ Shell::Id Shell::wanted(const Model &model) const
         return Id::launch;
     if (model.has_track && playing_open_)
         return Id::playing;
-    return page_open_ && model.page ? Id::page : Id::home;
+    if (!stack_.empty())
+        return stack_.back();
+    return library_tab_ ? Id::library : Id::home;
 }
 
 void Shell::go(Id next, Move move, float seconds)
 {
-    static const char *kNames[] = {"launch", "home", "playing", "control room", "page"};
+    static const char *kNames[] = {"launch", "home", "playing", "control room", "page", "library", "artist"};
     static const char *kMoves[] = {"none", "iris", "black", "slide"};
     sys::log("[UI] screen: %s -> %s (%s)", kNames[static_cast<int>(current_)],
              kNames[static_cast<int>(next)], kMoves[static_cast<int>(move)]);
@@ -94,8 +102,9 @@ void Shell::update(const Model &model, const InputFrame &input, float dt, ui::Fe
 
     // Home is the hub: Triangle opens Now Playing, Circle steps back (Now
     // Playing keeps Circle while its queue has the focus).
-    if (!menu_open_ && (current_ == Id::home || current_ == Id::page) && model.has_track &&
-        input.is_pressed(Action::north))
+    const bool browsing = current_ == Id::home || current_ == Id::library || current_ == Id::page ||
+                          current_ == Id::artist;
+    if (!menu_open_ && browsing && model.has_track && input.is_pressed(Action::north))
     {
         playing_open_ = true;
         feedback.play(audio::Cue::open);
@@ -106,10 +115,17 @@ void Shell::update(const Model &model, const InputFrame &input, float dt, ui::Fe
         playing_open_ = false;
         feedback.play(audio::Cue::back);
     }
-    else if (!menu_open_ && current_ == Id::page && input.is_pressed(Action::back))
+    else if (!menu_open_ && (current_ == Id::page || current_ == Id::artist) && !stack_.empty() &&
+             input.is_pressed(Action::back))
     {
-        page_open_ = false;
+        stack_.pop_back();
         feedback.play(audio::Cue::back);
+    }
+    else if (!menu_open_ && (current_ == Id::home || current_ == Id::library) && stack_.empty() &&
+             (input.is_pressed(Action::page_prev) || input.is_pressed(Action::page_next)))
+    {
+        library_tab_ = !library_tab_;
+        feedback.play(audio::Cue::tab, library_tab_ ? 1.06f : 0.96f);
     }
     if (!model.has_track)
         playing_open_ = false;
@@ -139,10 +155,14 @@ void Shell::update(const Model &model, const InputFrame &input, float dt, ui::Fe
     else
     {
         screen(current_).update(model, input, dt, feedback, commands);
-        // Cross on a Home card asked for its page: show it.
+        // Cross on a card asked for its page: an artist's or a list's.
         for (const Request &request : context_.requests)
             if (request.kind == Request::Kind::open)
-                page_open_ = true;
+            {
+                const Id next = request.card.uri.rfind("spotify:artist:", 0) == 0 ? Id::artist : Id::page;
+                if (stack_.empty() || stack_.back() != next)
+                    stack_.push_back(next);
+            }
         if (current_ == Id::menu && control_room_wants_close(*menu_))
         {
             menu_open_ = false;
@@ -166,7 +186,8 @@ void Shell::update(const Model &model, const InputFrame &input, float dt, ui::Fe
     }
     notice_age_ += dt;
     // ---- top bar: now-playing bar and the status pill ----
-    const bool hub = current_ == Id::home || current_ == Id::page;
+    const bool hub = current_ == Id::home || current_ == Id::library || current_ == Id::page ||
+                     current_ == Id::artist;
     mini_.target = hub && model.has_track && !menu_open_ ? 1.0f : 0.0f;
     mini_.update(dt, 9.0f);
     std::string status;
@@ -272,11 +293,14 @@ void Shell::compose(gfx::Renderer &renderer, const Model &model)
         const float travel = tween::quint_out(t);
         // Deeper screens arrive from the right: playing after home, the menu
         // after anything; going back slides the other way.
-        const float direction = current_ == Id::menu ||
-                                         (current_ == Id::playing && previous_ != Id::menu) ||
-                                         (current_ == Id::page && previous_ == Id::home)
-                                     ? 1.0f
-                                     : -1.0f;
+        // Deeper screens (and the Library tab) arrive from the right; going
+        // back slides the other way.
+        const bool deeper =
+            current_ == Id::menu || (current_ == Id::playing && previous_ != Id::menu) ||
+            ((current_ == Id::page || current_ == Id::artist) && previous_ != Id::playing && previous_ != Id::menu &&
+             !(current_ == Id::artist && previous_ == Id::page)) ||
+            (current_ == Id::library && previous_ == Id::home);
+        const float direction = deeper ? 1.0f : -1.0f;
         record(old, previous_, model, out, -direction * slide * travel, 1.0f - 0.03f * travel);
         record(now, current_, model, in, direction * slide * (1.0f - travel),
                0.97f + 0.03f * travel);
@@ -342,7 +366,9 @@ void Shell::draw_overlays(gfx::DrawList &list, const Model &model)
     {
         // Left of the now-playing bar, else left of Home's account initial,
         // else in the corner.
-        const float right = mini_.value > 0.5f ? bar.x - 16 : current_ == Id::home ? 1758.0f : kRight;
+        const float right = mini_.value > 0.5f                                  ? bar.x - 16
+                            : current_ == Id::home || current_ == Id::library ? 1758.0f
+                                                                              : kRight;
         const float w = status_width_.value;
         const gfx::Rect pill{right - w + 24.0f * (1.0f - shown), 56, w, 52};
         list.push_opacity(shown);

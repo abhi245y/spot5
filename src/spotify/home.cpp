@@ -5,6 +5,7 @@
 
 #include "nlohmann/json.hpp"
 #include "spotify/protobuf.hpp"
+#include "spotify/text.hpp"
 
 namespace spotify::home
 {
@@ -71,7 +72,7 @@ std::vector<Section> parse_home(std::string_view reply)
         {
             if (feature.number == 1 || feature.wire != 2)
                 continue;
-            section.title = header_title(pb::first(feature.bytes, 1));
+            section.title = drawable(header_title(pb::first(feature.bytes, 1)));
             pb::Reader items(pb::at(feature.bytes, {2, 1}));
             pb::Field item;
             while (items.next(item))
@@ -170,9 +171,9 @@ bool parse_traits(std::string_view reply, Entities &entities, std::int64_t now_m
             else if (type_url.find("IdentityTrait") != std::string_view::npos)
             {
                 entity.type = std::string(pb::first(value, 1));
-                entity.title = std::string(pb::first(value, 2));
-                entity.description = std::string(pb::first(value, 3));
-                entity.owner = std::string(pb::at(value, {5, 1}));
+                entity.title = drawable(std::string(pb::first(value, 2)));
+                entity.description = drawable(std::string(pb::first(value, 3)));
+                entity.owner = drawable(std::string(pb::at(value, {5, 1})));
             }
         }
         if (!list.ok())
@@ -204,16 +205,16 @@ bool parse_tracks(std::string_view reply, std::map<std::string, screens::TrackRo
                 continue;
             screens::TrackRow row;
             row.uri = uri;
-            row.title = std::string(pb::first(track, 2));
+            row.title = drawable(std::string(pb::first(track, 2)));
             const std::string_view album = pb::first(track, 3);
-            row.album = std::string(pb::first(album, 2));
+            row.album = drawable(std::string(pb::first(album, 2)));
             pb::Reader fields(track);
             pb::Field f;
             std::vector<std::string> artists;
             while (fields.next(f))
             {
                 if (f.number == 4 && f.wire == 2)
-                    artists.emplace_back(pb::first(f.bytes, 2));
+                    artists.push_back(drawable(std::string(pb::first(f.bytes, 2))));
                 else if (f.number == 7 && f.wire == 0)
                     row.duration_ms = static_cast<std::uint32_t>(f.varint);
             }

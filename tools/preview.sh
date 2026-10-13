@@ -18,7 +18,7 @@ ninja_begin "$build/build.ninja"
 
 # The UI only: the kit and the screens. Console code (cspot, audio output,
 # platform services, the app) is not part of the preview.
-sources=("$root/host/preview_main.cpp" "$root/host/platform_host.cpp" "$root/src/spotify/home.cpp")
+sources=("$root/host/preview_main.cpp" "$root/host/platform_host.cpp" "$root/src/spotify/home.cpp" "$root/src/spotify/library.cpp")
 while IFS= read -r -d '' source; do
     sources+=("$source")
 done < <(find "$root/src/gfx" "$root/src/ui" "$root/src/core" "$root/src/screens" \
@@ -62,6 +62,14 @@ if [[ -s $missing ]]; then
     echo "fetching $(wc -l < "$missing") Home covers for the preview..."
     while read -r url file; do
         curl -sfL -m 20 -o "$file" "$url" || rm -f "$file"
+        # The PC preview decodes with stb only: WebP covers become PNG here.
+        [[ -f $file ]] && python3 -c '
+import sys
+from PIL import Image
+path = sys.argv[1]
+head = open(path, "rb").read(12)
+if head[:4] == b"RIFF" and head[8:12] == b"WEBP":
+    Image.open(path).save(path, "PNG")' "$file" || rm -f "$file"
         sleep 0.2
     done < "$missing"
     run_preview

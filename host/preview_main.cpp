@@ -28,6 +28,7 @@
 #include "core/save_file.hpp"
 #include "nlohmann/json.hpp"
 #include "spotify/home.hpp"
+#include "spotify/library.hpp"
 #include "gfx/canvas.hpp"
 #include "gfx/gl_program.hpp"
 #include "gfx/renderer.hpp"
@@ -173,6 +174,56 @@ void load_rows_fixture(const std::string &dir)
     }
 }
 
+// Library: the PoC's full dump (names, URIs, covers) for volume, after the
+// real libraryV3 replies (exact shapes); artist page: Tame Impala.
+std::shared_ptr<const screens::Library> g_library;
+std::shared_ptr<const screens::ArtistPage> g_artist;
+
+void load_library_fixture(const std::string &dir)
+{
+    auto library = std::make_shared<screens::Library>();
+    int total = 0;
+    for (const char *name : {"lib_playlists.json", "lib_albums.json", "lib_artists.json"})
+    {
+        std::string text;
+        if (save::read_file(dir + "/" + name, &text))
+            spotify::library::parse_library_page(text, library->items, total);
+    }
+    for (const char *kind : {"playlists", "albums"})
+    {
+        std::string text;
+        if (!save::read_file(dir + "/library_" + std::string(kind) + ".json", &text))
+            continue;
+        const auto list = nlohmann::json::parse(text, nullptr, false);
+        if (!list.is_array())
+            continue;
+        for (const auto &entry : list)
+        {
+            screens::LibraryItem item;
+            item.card.uri = entry.value("uri", "");
+            item.card.title = entry["name"].is_string() ? entry["name"].get<std::string>() : "";
+            item.card.image = entry["image"].is_string() ? entry["image"].get<std::string>() : "";
+            item.added_at = entry.value("added_at", "");
+            item.kind = std::string(kind) == "albums" ? screens::LibraryItem::Kind::album
+                                                      : screens::LibraryItem::Kind::playlist;
+            item.card.subtitle = item.kind == screens::LibraryItem::Kind::album ? "Album" : "Playlist";
+            bool seen = item.card.title.empty();
+            for (const auto &have : library->items)
+                seen = seen || have.card.uri == item.card.uri;
+            if (!seen)
+                library->items.push_back(item);
+        }
+    }
+    for (std::size_t i = 0; i < library->items.size(); ++i)
+        library->items[i].recent = static_cast<int>(i);
+    if (!library->items.empty())
+        g_library = library;
+    std::string text;
+    auto artist = std::make_shared<screens::ArtistPage>();
+    if (save::read_file(dir + "/artist.json", &text) && spotify::library::parse_artist(text, *artist))
+        g_artist = artist;
+}
+
 std::shared_ptr<const screens::Queue> fixture_queue()
 {
     if (g_rows.empty())
@@ -281,6 +332,25 @@ const std::vector<Beat> &script()
         {1.0f, nullptr, 0, "06e-page-list", Direction::down},
         {0.8f, nullptr, action_bit(Action::back), "06e2-back-home"},
         {0.6f, [](Model &m) { m.notice = "This can't be played here yet"; ++m.notice_id; }, 0, "06f-notice"},
+        // Library: R1 from Home, filter with R2, sort with Square, open an artist.
+        {1.4f, nullptr, action_bit(Action::page_next), "06l1-library"},
+        {0.3f, nullptr, 0, nullptr, Direction::right},
+        {0.6f, nullptr, 0, "06l2-library-focus", Direction::down},
+        {0.12f, nullptr, action_bit(Action::jump_next)},
+        {0.5f, nullptr, 0, "06l3-filter-travel"},
+        {0.8f, nullptr, action_bit(Action::jump_next), "06l4-albums"},
+        {0.2f, nullptr, action_bit(Action::jump_next)},
+        {0.9f, nullptr, action_bit(Action::west), "06l5-artists-sorted"},
+        {1.3f, nullptr, action_bit(Action::confirm), "06a1-artist"},
+        {0.3f, nullptr, 0, nullptr, Direction::down},
+        {0.9f, nullptr, 0, "06a2-artist-popular", Direction::down},
+        {0.3f, nullptr, 0, nullptr, Direction::down},
+        {0.3f, nullptr, 0, nullptr, Direction::down},
+        {0.3f, nullptr, 0, nullptr, Direction::down},
+        {0.3f, nullptr, 0, nullptr, Direction::down},
+        {1.0f, nullptr, 0, "06a3-artist-albums", Direction::right},
+        {0.6f, nullptr, action_bit(Action::back)},
+        {0.6f, nullptr, action_bit(Action::page_prev), "06l6-back-home"},
         {3.5f, [](Model &m) { playing(m, "a", "Aashiqana", "Chaar Diwaari", "Aashiqana", 47000, 214000); },
          0, nullptr},
         {0.8f, nullptr, 0, "06g-home-mini-player"},
@@ -398,10 +468,14 @@ int main(int argc, char **argv)
     std::remove((g_fixture + "/missing-covers.txt").c_str());
     g_home = load_home_fixture(g_fixture);
     load_rows_fixture(g_fixture);
+    load_library_fixture(g_fixture);
+    std::printf("library fixture: %zu items, artist %s\n", g_library ? g_library->items.size() : 0,
+                g_artist ? g_artist->card.title.c_str() : "none");
     std::printf("home fixture: %s\n", g_home ? "loaded" : "none (tests/home-fixture/home.pb)");
     screens::Shell shell(context);
     Model model;
     model.home = g_home;
+    model.library = g_library;
     model.username = "abhi245y";
     model.about = {"01.000.000", "ps5@555ea3c", "192.168.1.2"};
     std::vector<unsigned char> pixels(static_cast<std::size_t>(kWidth) * kHeight * 4);
@@ -425,7 +499,9 @@ int main(int argc, char **argv)
             std::vector<Command> commands;
             shell.update(model, input, kDt, feedback, commands);
             for (const screens::Request &request : context.requests)
-                if (request.kind == screens::Request::Kind::open)
+                if (request.kind == screens::Request::Kind::open && request.card.uri.rfind("spotify:artist:", 0) == 0)
+                    model.artist = g_artist;
+                else if (request.kind == screens::Request::Kind::open)
                 {
                     auto page = std::make_shared<screens::PlaylistPage>();
                     page->card = request.card;
