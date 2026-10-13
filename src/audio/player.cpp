@@ -45,6 +45,7 @@ Player::Player(std::shared_ptr<cspot::SpircHandler> handler) : handler_(std::mov
         {
         case Type::PLAY_PAUSE:
             paused_ = std::get<bool>(event->data);
+            now_playing_.paused = paused_;
             break;
         case Type::FLUSH:
         case Type::DISC:
@@ -67,7 +68,9 @@ Player::Player(std::shared_ptr<cspot::SpircHandler> handler) : handler_(std::mov
             break;
         case Type::TRACK_INFO: {
             auto info = std::get<cspot::TrackInfo>(event->data);
-            CSPOT_LOG(info, "Now playing: %s - %s", info.artist.c_str(), info.name.c_str());
+            now_playing_.title = info.name;
+            now_playing_.artist = info.artist;
+            now_playing_.album = info.album;
             break;
         }
         default:
@@ -97,6 +100,12 @@ Player::~Player()
         pthread_join(thread_, nullptr);
         sceAudioOutClose(handle_);
     }
+}
+
+NowPlaying Player::now_playing()
+{
+    std::scoped_lock guard(lock_);
+    return now_playing_;
 }
 
 std::size_t Player::on_data(uint8_t *data, std::size_t bytes, const std::string &track)

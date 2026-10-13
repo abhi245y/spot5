@@ -26,6 +26,16 @@ namespace cspot
 class SpircHandler;
 }
 
+// What is playing, for the app and UI. Copied out under the player's lock.
+struct NowPlaying
+{
+    std::string title;
+    std::string artist;
+    std::string album;
+    bool paused = true;
+    bool operator==(const NowPlaying &) const = default;
+};
+
 class Player
 {
   public:
@@ -35,6 +45,7 @@ class Player
     Player &operator=(const Player &) = delete;
 
     bool ok() const { return handle_ >= 0; }
+    NowPlaying now_playing();
 
   private:
     struct Chunk
@@ -61,4 +72,5 @@ class Player
     std::string stream_track_, play_track_;
     bool paused_ = true, playlist_end_ = false;
     std::atomic<int> volume_{65535}; // spirc volume, 0..65535
+    NowPlaying now_playing_;
 };
