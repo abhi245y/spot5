@@ -82,8 +82,10 @@ class Shell
     std::uint32_t glass_texture_ = 0;
 
     // Top bar: the now-playing bar (Home and pages) and one status pill
-    // (busy action, reconnecting, updating Home).
+    // (busy action, reconnecting, updating Home). On a list's page the bar
+    // docks under the cover (dock_ 1) and flies back to the corner elsewhere.
     tween::Spring mini_;
+    tween::Spring dock_;
     tween::Spring status_shown_;
     tween::Spring status_width_;
     std::string status_text_, status_previous_;

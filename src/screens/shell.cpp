@@ -190,6 +190,13 @@ void Shell::update(const Model &model, const InputFrame &input, float dt, ui::Fe
                      current_ == Id::artist;
     mini_.target = hub && model.has_track && !menu_open_ ? 1.0f : 0.0f;
     mini_.update(dt, 9.0f);
+    // Only a hub screen moves it; Now Playing and Settings just fade it out
+    // where it is.
+    if (hub)
+        dock_.target = current_ == Id::page ? 1.0f : 0.0f;
+    if (context_.settings.reduced_motion || mini_.value < 0.01f)
+        dock_.snap(dock_.target);
+    dock_.update(dt, 10.0f);
     std::string status;
     if (model.connection == Connection::reconnecting)
         status = "Reconnecting";
@@ -326,8 +333,12 @@ void Shell::draw_overlays(gfx::DrawList &list, const Model &model)
 {
     const ui::Fonts &fonts = context_.fonts;
 
-    // ---- the now-playing bar, top right (Home and pages) ----
-    const gfx::Rect bar{1740 - 26 - 560 + 30.0f * (1.0f - mini_.value), 50, 560, 64};
+    // ---- the now-playing bar: top right, or under a list's cover ----
+    const float d = dock_.value;
+    const gfx::Rect corner{1740 - 26 - 560 + 30.0f * (1.0f - mini_.value), 50, 560, 64};
+    const gfx::Rect docked{kMargin, 810, 620, 64}; // playlist.cpp's kCover, 40 px below
+    const gfx::Rect bar{corner.x + (docked.x - corner.x) * d, corner.y + (docked.y - corner.y) * d,
+                        corner.w + (docked.w - corner.w) * d, 64};
     if (mini_.value > 0.01f && model.has_track)
     {
         list.push_opacity(mini_.value);
@@ -368,7 +379,7 @@ void Shell::draw_overlays(gfx::DrawList &list, const Model &model)
     {
         // Left of the now-playing bar, else left of Home's account initial,
         // else in the corner.
-        const float right = mini_.value > 0.5f                                  ? bar.x - 16
+        const float right = mini_.value > 0.5f && d < 0.5f                      ? bar.x - 16
                             : current_ == Id::home || current_ == Id::library ? 1758.0f
                                                                               : kRight;
         const float w = status_width_.value;

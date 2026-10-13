@@ -631,9 +631,10 @@ class NowPlaying final : public Screen
         const float in = appear(0);
         list.push_opacity(in);
         const float y = 116.0f - slide(in, 12.0f);
-        const float w = ui::text(list, fonts.display, "Spotify Connect", l.x, y, 32, kWhite);
-        const std::string where = "on " + model.device_name + "  \xC2\xB7  320 kbps";
-        ui::text(list, fonts.regular, where, l.x + w + 24, y, 22, kWhite.with_alpha(0.6f));
+        const float w = ui::text(list, fonts.display, "Playing on " + model.device_name, l.x, y, 32, kWhite);
+        constexpr const char *kKbps[] = {"96 kbps", "160 kbps", "320 kbps"};
+        const int quality = std::clamp(context_.settings.quality, 0, 2);
+        ui::text(list, fonts.regular, kKbps[quality], l.x + w + 24, y, 22, kWhite.with_alpha(0.6f));
         list.pop_opacity();
     }
 

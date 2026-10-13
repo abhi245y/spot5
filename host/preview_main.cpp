@@ -357,6 +357,11 @@ const std::vector<Beat> &script()
         {0.8f, nullptr, 0, "06g-home-mini-player"},
         {0.7f, [](Model &m) { m.busy = "Shuffling My playlist #6"; }, 0, "06h-busy-pill"},
         {0.2f, [](Model &m) { m.busy.clear(); }},
+        // The bar docks under a list's cover and flies back on the way out.
+        {0.18f, nullptr, action_bit(Action::confirm), "06m1-dock-flying"},
+        {1.0f, nullptr, 0, "06m2-docked"},
+        {0.18f, nullptr, action_bit(Action::back), "06m3-undock-flying"},
+        {0.8f, nullptr, 0, "06m4-corner"},
         {0.3f, nullptr, action_bit(Action::north), "07-home-to-playing"},
         {0.4f, nullptr, 0, nullptr},
         {0.4f, nullptr, 0, "08a-cover-pending"},

@@ -65,7 +65,7 @@ const char *step_name(Step step)
     case Step::connect:
         return "Connecting to Spotify";
     case Step::start:
-        return "Starting Spotify Connect";
+        return "Getting ready to play";
     case Step::home:
         return "Loading your Home";
     case Step::artwork:
@@ -192,23 +192,28 @@ class Launch final : public Screen
     bool finished() const { return ready_ && ready_age_ >= kHandOver; }
 
   private:
-    // Sound waves rising from a point: the emblem above the wordmark.
+    // The app icon's mark above the wordmark: three tilted arcs, widest on
+    // top (sce_sys/icon0.png).
     void draw_emblem(gfx::DrawList &list, float cy, float in) const
     {
         const float lit = 0.32f + 0.10f * ui::breathe(clock_, 3.0f);
         list.push_opacity(in);
-        list.glow({kCentreX - 12, cy - 12, 24, 24}, 12, 70, kGreen.with_alpha(lit));
+        list.glow({kCentreX - 12, cy + 2, 24, 24}, 12, 70, kGreen.with_alpha(lit));
+        constexpr float kHalf[] = {46.0f, 38.0f, 30.0f};    // half the chord
+        constexpr float kSag[] = {13.0f, 10.0f, 7.5f};      // how far it bows up
+        constexpr float kThick[] = {12.0f, 10.0f, 8.0f};
         for (int i = 0; i < 3; ++i)
         {
-            // Each arc lights up in turn, like a signal going out.
+            // Each arc lights up in turn, top to bottom.
             const float wave = context_.settings.reduced_motion
                                    ? 1.0f
                                    : 0.55f + 0.45f * ui::breathe(clock_ - 0.25f * i, 2.2f);
-            const float r = 22.0f + 18.0f * static_cast<float>(i);
-            list.arc(kCentreX, cy + 10, r, 5, -1.0f, 2.0f,
-                     gfx::mix(kMint, kGreen, 0.3f * i).with_alpha(wave));
+            const float radius = (kHalf[i] * kHalf[i] + kSag[i] * kSag[i]) / (2.0f * kSag[i]);
+            const float half_angle = std::asin(kHalf[i] / radius);
+            const float top = cy - 14.0f + 25.0f * static_cast<float>(i);
+            list.arc(kCentreX, top + radius, radius + kThick[i] * 0.5f, kThick[i], -half_angle - 0.12f,
+                     2.0f * half_angle, gfx::mix(kMint, kGreen, 0.3f * i).with_alpha(wave));
         }
-        list.circle(kCentreX, cy + 10, 7, kMint);
         const float rule = 260.0f * in;
         list.gradient_rect_h({kCentreX - 74 - rule, cy + 6, rule, 2}, 1, kClear,
                              kGreen.with_alpha(0.7f));
@@ -313,7 +318,7 @@ class Launch final : public Screen
             list.gradient_rect_h({left.x, edge, half, 1.5f}, 0, kClear, kGreen.with_alpha(0.6f));
             list.gradient_rect_h({right.x, edge, half, 1.5f}, 0, kGreen.with_alpha(0.6f), kClear);
         }
-        ui::text(list, fonts.semibold, "CONNECT  \xC2\xB7  PS5", kCentreX + 5, left.y + 31, 22,
+        ui::text(list, fonts.semibold, "FOR PS5", kCentreX + 5, left.y + 31, 22,
                  kInk.with_alpha(tween::cubic_out((t - 0.8f) / 0.5f)), gfx::Align::center, 10.0f);
         list.pop_opacity();
     }

@@ -142,7 +142,7 @@ constexpr Row kDisplayRows[] = {
      Field::reduce_motion},
 };
 constexpr Row kAboutRows[] = {
-    {"Clear cache", "Deletes saved covers and the saved Home; they download again as you browse.",
+    {"Clear cache", "Deletes saved covers, Home and Library; they download again as you browse.",
      Kind::action, Field::clear_cache},
     {"Reset all settings", "Returns every option on these pages to its default value.",
      Kind::action, Field::reset},
@@ -1485,10 +1485,10 @@ class ControlRoom final : public Screen
                 ? "The saved login is deleted from this console. To play here again you will need "
                   "to pair it with your phone."
             : shown == Ask::clear
-                ? "Saved covers and the saved Home are deleted. Your login and settings stay; "
-                  "everything downloads again as you browse."
+                ? "Saved covers, Home and Library are deleted and download again. Your login and "
+                  "settings stay."
             : shown == Ask::reset
-                ? "Quality, volume, the device name and reduce motion go back to how the app "
+                ? "Quality, volume, the device name, reduce motion and resolution go back to how the app "
                   "first started."
                 : "The music stops and the app closes. You can also close it any time with the PS "
                   "button.";
