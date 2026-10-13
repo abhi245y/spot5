@@ -19,7 +19,8 @@ namespace
 constexpr const char *kDeviceName = "PS5"; // name in the phone's Connect list
 }
 
-std::unique_ptr<Session> Session::start(const app::Config &config, std::string &error)
+std::unique_ptr<Session> Session::start(const app::Config &config, std::string &error,
+                                        const std::function<void(Stage)> &progress)
 {
     std::string creds = app::read_file(app::paths::kCredentials);
     if (creds.empty())
@@ -39,6 +40,7 @@ std::unique_ptr<Session> Session::start(const app::Config &config, std::string &
         ctx.config.audioFormat = AudioFormat_OGG_VORBIS_320;
         ctx.config.volume = 65535; // reported to the phone; applied in software
 
+        progress(Stage::connecting);
         ctx.session->connectWithRandomAp();
         ctx.config.authData = ctx.session->authenticate(blob);
         if (ctx.config.authData.empty())
@@ -60,6 +62,7 @@ std::unique_ptr<Session> Session::start(const app::Config &config, std::string &
                       app::paths::kCredentials.c_str());
 
     // Same order as cspot's CLI: spirc, Mercury task, then the player.
+    progress(Stage::starting);
     session->handler_ = std::make_shared<cspot::SpircHandler>(session->ctx_);
     session->ctx_->session->startTask();
     session->player_ = std::make_unique<Player>(session->handler_);
@@ -85,6 +88,21 @@ Session::~Session()
 void Session::pump()
 {
     ctx_->session->handlePacket();
+}
+
+void Session::set_paused(bool paused)
+{
+    handler_->setPause(paused);
+}
+
+void Session::next()
+{
+    handler_->nextSong();
+}
+
+void Session::previous()
+{
+    handler_->previousSong();
 }
 
 bool Session::connected() const

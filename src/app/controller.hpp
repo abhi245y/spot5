@@ -24,6 +24,7 @@
 #include <string>
 
 #include "audio/player.hpp"
+#include "screens/model.hpp"
 #include "spotify/session.hpp"
 
 namespace app
@@ -39,15 +40,15 @@ enum class State
 
 const char *state_name(State state);
 
-enum class Command
-{
-    Retry,
-};
+// What the UI may ask for: screens::Command (retry, play_pause, next,
+// previous; quit is handled by the app itself).
+using screens::Command;
 
 // A copy of everything the UI shows, taken under one lock.
 struct Status
 {
     State state = State::Connecting;
+    screens::Step step = screens::Step::certificates; // loader progress
     std::string message; // why we are in Error/Reconnecting
     NowPlaying now_playing;
 };
@@ -73,6 +74,7 @@ class Controller
     void step_ready();
     void step_reconnecting();
     void set_state(State next, const std::string &message = {});
+    void set_step(screens::Step step);
     void publish_now_playing();
 
     // Controller thread only.

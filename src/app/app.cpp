@@ -7,18 +7,21 @@
 
 #include <chrono>
 #include <cstdint>
+#include <span>
 #include <string>
+#include <vector>
 
-#include "X509Bundle.h"
 #include "BellLogger.h"
+#include "X509Bundle.h"
 #include "app/config.hpp"
 #include "app/controller.hpp"
 #include "core/input.hpp"
 #include "core/save_file.hpp"
 #include "gfx/renderer.hpp"
-#include "platform/pad.hpp"
 #include "platform/ps5/display_egl.hpp"
+#include "platform/ps5/pad.hpp"
 #include "platform/ps5/system.hpp"
+#include "screens/shell.hpp"
 #include "ui/fonts.hpp"
 
 namespace app
@@ -70,21 +73,35 @@ bool init_certificates()
     sys::quit();
 }
 
-void draw(gfx::DrawList &list, const ui::Fonts &fonts, const Status &status)
+screens::Connection connection(State state)
 {
-    const gfx::Color white = gfx::Color::rgb(0xffffff);
-    const gfx::Color dim = gfx::Color::rgb(0xffffff, 0.6f);
-    ui::text(list, fonts.semibold, "Spotify", 960, 420, 72, white, gfx::Align::center);
-    ui::text(list, fonts.regular, state_name(status.state), 960, 520, 40, white,
-             gfx::Align::center);
-    if (!status.message.empty())
-        ui::text(list, fonts.regular, status.message, 960, 580, 30, dim, gfx::Align::center);
-    if (!status.now_playing.title.empty())
-        ui::text(list, fonts.regular,
-                 status.now_playing.artist + " - " + status.now_playing.title, 960, 640, 34,
-                 white, gfx::Align::center);
-    const char *hint = status.state == State::Error ? "X Retry      OPTIONS Quit" : "OPTIONS Quit";
-    ui::text(list, fonts.regular, hint, 960, 1000, 26, dim, gfx::Align::center);
+    switch (state)
+    {
+    case State::Connecting:
+        return screens::Connection::connecting;
+    case State::Ready:
+        return screens::Connection::ready;
+    case State::Reconnecting:
+        return screens::Connection::reconnecting;
+    case State::Error:
+        return screens::Connection::error;
+    }
+    return screens::Connection::connecting;
+}
+
+// What the screens show, from the controller's status.
+screens::Model model_from(const Status &status)
+{
+    screens::Model model;
+    model.connection = connection(status.state);
+    model.step = status.step;
+    model.message = status.message;
+    const NowPlaying &now = status.now_playing;
+    model.has_track = !now.title.empty();
+    model.track = {now.track_id, now.title, now.artist, now.album, now.duration_ms};
+    model.paused = now.paused;
+    model.position_ms = std::min(now.position_ms, now.duration_ms);
+    return model;
 }
 
 } // namespace
@@ -101,10 +118,12 @@ void App::run()
         sys::park();
     }
     gfx::Renderer renderer;
-    gfx::Font regular_font, semibold_font;
+    gfx::Font regular, semibold, display_face, mono;
     ui::Fonts fonts;
-    if (!renderer.init() || !load_font(renderer, "inter-regular.huifont", regular_font, fonts.regular) ||
-        !load_font(renderer, "inter-semibold.huifont", semibold_font, fonts.semibold))
+    if (!renderer.init() || !load_font(renderer, "inter-regular.huifont", regular, fonts.regular) ||
+        !load_font(renderer, "inter-semibold.huifont", semibold, fonts.semibold) ||
+        !load_font(renderer, "montserrat-medium.huifont", display_face, fonts.display) ||
+        !load_font(renderer, "dejavu-sans-mono.huifont", mono, fonts.mono))
     {
         sys::log("[APP] fatal: renderer or fonts failed");
         sys::park();
@@ -117,43 +136,54 @@ void App::run()
         sys::park();
     }
 
-    platform::Pad pad;
+    ps5::Pad pad;
     pad.open();
-    gfx::DrawList list;
-    gfx::BackdropSpec sky;
-    sky.mode = gfx::BackdropMode::aurora;
-    sky.colors[0] = gfx::Color::rgb(0x07120c);
-    sky.colors[1] = gfx::Color::rgb(0x0d2418);
-    sky.colors[2] = gfx::Color::rgb(0x1db954);
-    sky.colors[3] = gfx::Color::rgb(0x1a6b47);
-    const auto started = std::chrono::steady_clock::now();
+    InputTracker tracker;
+    screens::Context context{fonts, false};
+    screens::Shell shell(context);
+    PadSample samples[64];
+    std::int64_t last = sys::monotonic_us();
     std::uint64_t frames = 0;
 
     for (;;)
     {
+        // Animation time is start-to-start, clamped so a hitch cannot
+        // teleport anything (as in ps5-homebrew-ui's main loop).
+        const std::int64_t now = sys::monotonic_us();
+        float dt = frames == 0 ? 1.0f / 60.0f : static_cast<float>(now - last) / 1e6f;
+        last = now;
+        dt = std::min(dt, 0.05f);
+
         if (!pad.is_open())
             pad.open();
-        std::uint32_t pressed = pad.poll_pressed();
-        Status status = controller.status();
-        if (pressed & pad_bits::kOptions)
-            quit(display);
-        if ((pressed & pad_bits::kCross) && status.state == State::Error)
-            controller.send(Command::Retry);
+        const std::size_t count = pad.read(samples);
+        const InputFrame input =
+            tracker.update(std::span<const PadSample>(samples, count), static_cast<std::uint64_t>(now));
 
-        list.clear();
-        draw(list, fonts, status);
-        sky.time = std::chrono::duration<float>(std::chrono::steady_clock::now() - started).count();
-        renderer.begin();
-        renderer.backdrop(sky);
-        renderer.draw(list);
+        const screens::Model model = model_from(controller.status());
+        ui::Feedback feedback;
+        std::vector<screens::Command> commands;
+        shell.update(model, input, dt, feedback, commands);
+        for (screens::Command command : commands)
+        {
+            if (command == screens::Command::quit)
+                quit(display);
+            controller.send(command);
+        }
+        // UI sounds are not played yet (the Player owns the audio port);
+        // rumble is.
+        if (feedback.rumble_strength > 0.0f)
+            pad.rumble(feedback.rumble_strength, feedback.rumble_seconds);
+        pad.tick(dt);
+
+        shell.compose(renderer, model);
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
         renderer.present(0, display.width(), display.height());
         if (!display.swap())
         {
-            sys::log("[APP] fatal: swap failed frame=%llu",
-                     static_cast<unsigned long long>(frames));
+            sys::log("[APP] fatal: swap failed frame=%llu", static_cast<unsigned long long>(frames));
             sys::park();
         }
         if (++frames == 1)

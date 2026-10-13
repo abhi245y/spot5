@@ -103,21 +103,37 @@ void Controller::handle_commands()
     }
     for (Command command : commands)
     {
+        const State state = status().state;
         switch (command)
         {
-        case Command::Retry:
-            if (status().state == State::Error)
+        case Command::retry:
+            if (state == State::Error)
             {
                 session_.reset();
                 set_state(State::Connecting);
             }
             break;
+        case Command::play_pause:
+            if (state == State::Ready)
+                session_->set_paused(!session_->now_playing().paused);
+            break;
+        case Command::next:
+            if (state == State::Ready)
+                session_->next();
+            break;
+        case Command::previous:
+            if (state == State::Ready)
+                session_->previous();
+            break;
+        case Command::quit:
+            break; // the app quits itself
         }
     }
 }
 
 void Controller::connect()
 {
+    set_step(screens::Step::login);
     Config config;
     std::string error;
     if (!load_config(config, error))
@@ -125,12 +141,16 @@ void Controller::connect()
         set_state(State::Error, error);
         return;
     }
-    session_ = spotify::Session::start(config, error);
+    session_ = spotify::Session::start(config, error, [this](spotify::Session::Stage stage) {
+        set_step(stage == spotify::Session::Stage::connecting ? screens::Step::connect
+                                                               : screens::Step::start);
+    });
     if (!session_)
     {
         set_state(State::Error, error);
         return;
     }
+    set_step(screens::Step::done);
     set_state(State::Ready);
 }
 
@@ -168,13 +188,18 @@ void Controller::set_state(State next, const std::string &message)
         status_.now_playing = {};
 }
 
+void Controller::set_step(screens::Step step)
+{
+    std::scoped_lock guard(lock_);
+    status_.step = step;
+}
+
 void Controller::publish_now_playing()
 {
     NowPlaying now = session_->now_playing();
     std::scoped_lock guard(lock_);
-    if (now == status_.now_playing)
-        return;
-    if (!now.title.empty())
+    const NowPlaying &was = status_.now_playing;
+    if (!now.title.empty() && (now.track_id != was.track_id || now.paused != was.paused))
         hui::sys::log("[APP] %s: %s - %s", now.paused ? "paused" : "playing", now.artist.c_str(),
                       now.title.c_str());
     status_.now_playing = now;

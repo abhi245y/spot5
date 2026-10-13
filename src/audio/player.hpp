@@ -29,9 +29,12 @@ class SpircHandler;
 // What is playing, for the app and UI. Copied out under the player's lock.
 struct NowPlaying
 {
+    std::string track_id; // changes with every track that reaches the speaker
     std::string title;
     std::string artist;
     std::string album;
+    std::uint32_t duration_ms = 0;
+    std::uint32_t position_ms = 0; // of the audio being heard, not decoded
     bool paused = true;
     bool operator==(const NowPlaying &) const = default;
 };
@@ -73,4 +76,11 @@ class Player
     bool paused_ = true, playlist_end_ = false;
     std::atomic<int> volume_{65535}; // spirc volume, 0..65535
     NowPlaying now_playing_;
+    // Position of what is heard: base + frames played since it was set.
+    // PLAYBACK_START fires when the next track starts *streaming* (seconds
+    // before it is heard), so its position waits in next_start_ms_ until
+    // that track's audio reaches the output.
+    std::uint32_t base_ms_ = 0;
+    std::uint32_t next_start_ms_ = 0;
+    std::uint64_t played_frames_ = 0;
 };

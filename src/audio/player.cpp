@@ -49,11 +49,16 @@ Player::Player(std::shared_ptr<cspot::SpircHandler> handler) : handler_(std::mov
             break;
         case Type::FLUSH:
         case Type::DISC:
+            clear_locked();
+            break;
         case Type::SEEK:
             clear_locked();
+            base_ms_ = static_cast<std::uint32_t>(std::get<int>(event->data));
+            played_frames_ = 0;
             break;
         case Type::PLAYBACK_START:
             // Paused until the PLAY_PAUSE that follows; re-notify playback.
+            next_start_ms_ = static_cast<std::uint32_t>(std::get<int>(event->data));
             paused_ = true;
             playlist_end_ = false;
             clear_locked();
@@ -68,9 +73,11 @@ Player::Player(std::shared_ptr<cspot::SpircHandler> handler) : handler_(std::mov
             break;
         case Type::TRACK_INFO: {
             auto info = std::get<cspot::TrackInfo>(event->data);
+            now_playing_.track_id = info.trackId;
             now_playing_.title = info.name;
             now_playing_.artist = info.artist;
             now_playing_.album = info.album;
+            now_playing_.duration_ms = info.duration;
             break;
         }
         default:
@@ -105,7 +112,9 @@ Player::~Player()
 NowPlaying Player::now_playing()
 {
     std::scoped_lock guard(lock_);
-    return now_playing_;
+    NowPlaying now = now_playing_;
+    now.position_ms = base_ms_ + static_cast<std::uint32_t>(played_frames_ * 1000 / 48000);
+    return now;
 }
 
 std::size_t Player::on_data(uint8_t *data, std::size_t bytes, const std::string &track)
@@ -164,6 +173,10 @@ void Player::output_loop()
                     {
                         play_track_ = chunk.track;
                         reached = chunk.track;
+                        // This track is now heard: its clock starts here.
+                        base_ms_ = next_start_ms_;
+                        next_start_ms_ = 0;
+                        played_frames_ = 0;
                     }
                     std::size_t n = std::min(kGrain * 2 - filled, chunk.pcm.size() - chunk.read);
                     std::copy_n(chunk.pcm.data() + chunk.read, n, grain + filled);
@@ -173,6 +186,7 @@ void Player::output_loop()
                         chunks_.pop_front();
                 }
                 buffered_ -= filled;
+                played_frames_ += filled / 2;
                 have = true;
             }
             else if (!paused_ && playlist_end_ && chunks_.empty())

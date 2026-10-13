@@ -26,3 +26,4 @@ dist/
 # Spotify login and borrowed client ID live only on the console, never here.
 *creds*.json
 config.json
+build/preview/

@@ -1,0 +1,63 @@
+// ps5-spotify - One screen of the app, and the frame it draws into.
+// SPDX-License-Identifier: GPL-3.0-or-later
+//
+// Same frame model as ps5-homebrew-ui's designs (app/concept.hpp), so the
+// kit's techniques carry over unchanged: backdrop -> scene -> [glass capture]
+// -> overlay -> post.
+
+#pragma once
+
+#include <vector>
+
+#include "core/input.hpp"
+#include "gfx/backdrop_spec.hpp"
+#include "gfx/draw_list.hpp"
+#include "screens/model.hpp"
+#include "ui/feedback.hpp"
+#include "ui/fonts.hpp"
+
+namespace screens
+{
+
+// The kit lives in hui:: (gfx, ui, tween, audio, input types).
+using namespace hui;
+
+struct Frame
+{
+    gfx::BackdropSpec backdrop; // procedural shader behind everything
+    gfx::DrawList scene;        // the screen itself
+    gfx::DrawList overlay;      // dialogs, above the glass capture
+    gfx::BackdropSpec post;     // optional overlay shader (vignette)
+    bool glass = false;         // blur backdrop + scene into glass_texture first
+    std::uint32_t glass_texture = 0;
+
+    void reset()
+    {
+        backdrop = {};
+        post = {};
+        scene.clear();
+        overlay.clear();
+        glass = false;
+    }
+};
+
+// Long-lived things every screen needs.
+struct Context
+{
+    const ui::Fonts &fonts;
+    bool reduced_motion = false;
+};
+
+class Screen
+{
+  public:
+    virtual ~Screen() = default;
+    // Became the visible screen: restart the entrance.
+    virtual void enter() {}
+    virtual void update(const Model &model, const InputFrame &input, float dt,
+                        ui::Feedback &feedback, std::vector<Command> &commands) = 0;
+    // Must not change state (it can be drawn twice in a transition).
+    virtual void draw(const Model &model, Frame &frame) const = 0;
+};
+
+} // namespace screens

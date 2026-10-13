@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include <functional>
 #include <memory>
 #include <string>
 
@@ -25,10 +26,17 @@ namespace spotify
 class Session
 {
   public:
+    enum class Stage
+    {
+        connecting, // to an access point, then logging in
+        starting,   // Spotify Connect and the audio output
+    };
+
     // Logs in with the saved credentials, saves the refreshed credential and
-    // starts Spotify Connect. Returns nullptr and sets `error` (a message for
-    // the user) on failure.
-    static std::unique_ptr<Session> start(const app::Config &config, std::string &error);
+    // starts Spotify Connect, reporting each stage. Returns nullptr and sets
+    // `error` (a message for the user) on failure.
+    static std::unique_ptr<Session> start(const app::Config &config, std::string &error,
+                                          const std::function<void(Stage)> &progress);
 
     ~Session();
     Session(const Session &) = delete;
@@ -41,6 +49,11 @@ class Session
     bool connected() const;
 
     NowPlaying now_playing() { return player_->now_playing(); }
+
+    // Playback commands, as if pressed on the phone.
+    void set_paused(bool paused);
+    void next();
+    void previous();
 
   private:
     Session() = default;
