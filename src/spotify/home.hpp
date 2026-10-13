@@ -21,6 +21,7 @@
 namespace spotify::home
 {
 
+constexpr int kTrackV4 = 10; // full spotify.metadata.Track
 constexpr int kIdentityTrait = 178;
 constexpr int kVisualIdentityTrait = 179;
 
@@ -47,8 +48,13 @@ using Entities = std::map<std::string, Entity>;
 // casita/v1/home reply -> sections. Empty if it is not a Home page.
 std::vector<Section> parse_home(std::string_view reply);
 
-// The extended-metadata request body for these URIs (both traits).
-std::string traits_request(const std::vector<std::string> &uris, const std::string &country);
+// The extended-metadata request body for these URIs: `kinds` per URI
+// (Home cards: identity + images; tracks: kTrackV4).
+std::string metadata_request(const std::vector<std::string> &uris, const std::string &country,
+                             std::initializer_list<int> kinds = {kIdentityTrait, kVisualIdentityTrait});
+
+// Adds the tracks a TRACK_V4 reply describes to `tracks` (by URI).
+bool parse_tracks(std::string_view reply, std::map<std::string, screens::TrackRow> &tracks);
 
 // Adds what an extended-metadata reply says to `entities` (stamped `now_ms`).
 // Returns false if the reply is malformed.
@@ -57,6 +63,18 @@ bool parse_traits(std::string_view reply, Entities &entities, std::int64_t now_m
 // Sections + metadata -> the page the screens draw. Items without a title
 // are left out, and so are empty shelves.
 screens::HomePage build_page(const std::vector<Section> &sections, const Entities &entities);
+
+// The sharpest version of an album cover Spotify serves (the original
+// upload, ~2000 px; the loader halves it) for big canvases. Album art only:
+// ab67616d0000b273<id> is 640 px, ab67616d000082c1<id> the original. Playlist,
+// artist and mosaic images have no such size and come back unchanged.
+inline std::string larger_cover(const std::string &url)
+{
+    static const std::string kPrefix = "https://i.scdn.co/image/ab67616d0000b273";
+    if (url.rfind(kPrefix, 0) != 0)
+        return url;
+    return "https://i.scdn.co/image/ab67616d000082c1" + url.substr(kPrefix.size());
+}
 
 // Liked Songs appears on Home as an anonymised URI; playback needs the real one.
 std::string playable_uri(const std::string &uri, const std::string &username);

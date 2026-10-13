@@ -66,6 +66,10 @@ const char *step_name(Step step)
         return "Connecting to Spotify";
     case Step::start:
         return "Starting Spotify Connect";
+    case Step::home:
+        return "Loading your Home";
+    case Step::artwork:
+        return "Fetching artwork";
     case Step::done:
         return "Ready";
     }
@@ -130,7 +134,12 @@ class Launch final : public Screen
         }
         step_age_ += dt;
         const float share = 1.0f / static_cast<float>(kStepCount);
-        const float creep = failed ? 0.0f : 0.6f * (1.0f - std::exp(-step_age_ / 1.5f));
+        // The artwork step shows real progress: covers loaded of all.
+        const float creep =
+            failed ? 0.0f
+            : model.step == Step::artwork && model.artwork_total > 0
+                ? 0.95f * static_cast<float>(model.artwork_done) / static_cast<float>(model.artwork_total)
+                : 0.6f * (1.0f - std::exp(-step_age_ / 1.5f));
         bar_.target = std::min(1.0f, (static_cast<float>(step) + creep) * share);
         bar_.update(dt, 12.0f);
 
@@ -315,7 +324,9 @@ class Launch final : public Screen
         if (alpha <= 0.01f)
             return;
         const bool failed = model.connection == Connection::error;
-        const char *name = failed ? "Could not connect" : step_name(static_cast<Step>(step));
+        std::string name = failed ? "Could not connect" : step_name(static_cast<Step>(step));
+        if (!failed && static_cast<Step>(step) == Step::artwork && model.artwork_total > 0)
+            name += "  " + std::to_string(model.artwork_done) + " / " + std::to_string(model.artwork_total);
         ui::text(list, context_.fonts.semibold, ui::upper(name), kMargin + 36, 906 + dy, 17,
                  (failed ? kDanger : kInk).with_alpha(0.85f * alpha), gfx::Align::left, 3.5f);
     }

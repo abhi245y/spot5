@@ -32,6 +32,8 @@ enum class Step : std::uint8_t
     login,
     connect,
     start,
+    home,    // fetching Home (skipped when the saved one is under an hour old)
+    artwork, // loading every cover on Home (Model::artwork_done / artwork_total)
     done,
 };
 constexpr int kStepCount = static_cast<int>(Step::done);
@@ -68,17 +70,69 @@ struct Shelf
     std::vector<Card> cards;
 };
 
+// One song in a playlist page or the queue. Only uri is known until its
+// metadata has arrived (title empty: draw a placeholder row).
+struct TrackRow
+{
+    std::string uri;
+    std::string title;
+    std::string artists; // "A, B & C"
+    std::string album;
+    std::uint32_t duration_ms = 0;
+    std::string image; // ~300 px album cover
+};
+
+// A playlist/album opened from Home: its card and every track (resolved on
+// open; metadata arrives a window at a time).
+struct PlaylistPage
+{
+    Card card;
+    std::vector<TrackRow> tracks;
+    bool loading = true;  // the track list is still being resolved
+    std::string error;    // set when it cannot be shown or played
+};
+
+// What plays next, for Now Playing's queue panel: a window of the queue
+// around the playing track.
+struct Queue
+{
+    std::vector<TrackRow> tracks;
+    int playing = -1; // row of the playing track in `tracks`
+    int first = 0;    // queue position of tracks[0] (for Request::jump)
+};
+
 // The personalised Home page, as Spotify's own apps get it (casita).
 struct HomePage
 {
     std::vector<Shelf> shelves;
 };
 
-// What a screen wants played (Context::play): a playlist/album/... on Home.
+// What a screen wants played: a playlist/album/... from its first track (or
+// from track `index` of its page), in order or shuffled.
 struct PlayRequest
 {
     std::string uri;
     bool shuffle = false;
+    int index = 0;
+};
+
+// What a screen asks the app for (Context::requests), besides Commands.
+struct Request
+{
+    enum class Kind
+    {
+        play,     // play: PlayRequest
+        open,     // open card's page (its track list)
+        describe, // fetch details for uris (rows on screen without a title)
+        seek,     // seek the playing track to ms
+        jump,     // play queue track `index` (absolute, Queue::first + row)
+    };
+    Kind kind = Kind::play;
+    PlayRequest play;
+    Card card;
+    std::vector<std::string> uris;
+    std::uint32_t ms = 0;
+    int index = 0;
 };
 
 // What the user can change in Control Room. The app loads and saves it
@@ -111,7 +165,11 @@ struct Model
     About about;
 
     std::shared_ptr<const HomePage> home; // null until the first load (or the cache)
+    std::shared_ptr<const PlaylistPage> page; // the page last opened from Home
+    std::shared_ptr<const Queue> queue;       // null when nothing is queued
     bool home_loading = false;            // a fetch is running
+    int artwork_done = 0;                 // launch: covers loaded so far...
+    int artwork_total = 0;                // ... of this many
     std::string notice;                   // a short message, e.g. "This can't be played here yet"
     std::uint32_t notice_id = 0;          // changes with each new notice: show it once
 

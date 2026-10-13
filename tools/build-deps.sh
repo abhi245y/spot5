@@ -3,7 +3,7 @@
 # network layer, with the app's PS5 compiler wrapper.
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# Output: build/deps/libmbedtls.a, build/deps/libbell.a
+# Output: build/deps/libmbedtls.a, build/deps/libwebpdec.a, build/deps/libbell.a
 # ponytail: rebuilds everything each run (~1 min); move into the ninja graph if
 # that starts to hurt.
 
@@ -18,6 +18,14 @@ mbedtls_version=3.6.4
 mbedtls_sha256=ec35b18a6c593cf98c3e30db8b98ff93e8940a8c4e690e66b41dfc011d678110
 mbedtls_tar="$root/.deps/src/mbedtls-$mbedtls_version.tar.bz2"
 mbedtls="$root/.deps/src/mbedtls-$mbedtls_version"
+
+# libwebp, decoder only: some Spotify covers (user playlist images) are WebP.
+# Release tarball signed by the WebP release key (6B0E6B70...B8232B5D),
+# checked once by hand; the hash pins that verified file.
+webp_version=1.4.0
+webp_sha256=61f873ec69e3be1b99535634340d5bde750b2e4447caa1db9f61be3fd49ab1e5
+webp_tar="$root/.deps/src/libwebp-$webp_version.tar.gz"
+webp="$root/.deps/src/libwebp-$webp_version"
 
 mkdir -p "$root/.deps/src" "$out"
 
@@ -91,8 +99,21 @@ compile() {
     return $status
 }
 
+if [[ ! -f $webp_tar ]]; then
+    curl -sSL -o "$webp_tar" \
+        "https://storage.googleapis.com/downloads.webmproject.org/releases/webp/libwebp-$webp_version.tar.gz"
+fi
+echo "$webp_sha256  $webp_tar" | sha256sum --check --quiet
+[[ -d $webp ]] || tar -xzf "$webp_tar" -C "$root/.deps/src"
+
 compile "$out/mbedtls" mbedtls_flags "$mbedtls"/library/*.c
 rm -f "$out/libmbedtls.a" && llvm-ar rcs "$out/libmbedtls.a" "$out"/mbedtls/*.o
+
+# Everything under dec/dsp/utils compiles; the archive only lends the linker
+# what WebPDecodeRGBA needs (encoder objects stay unused).
+webp_flags=(-std=c11 -O2 -w -ffunction-sections -fdata-sections -I"$webp")
+compile "$out/webp" webp_flags "$webp"/src/dec/*.c "$webp"/src/dsp/*.c "$webp"/src/utils/*.c
+rm -f "$out/libwebpdec.a" && llvm-ar rcs "$out/libwebpdec.a" "$out"/webp/*.o
 
 # nanopb C files from cspot's .proto files (same generator as the PC build).
 rm -rf "$gen" && mkdir -p "$gen/protobuf"

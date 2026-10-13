@@ -10,6 +10,7 @@
 #include "LoginBlob.h"
 #include "MercurySession.h"
 #include "SpircHandler.h"
+#include "TrackQueue.h"
 #include "platform/ps5/system.hpp"
 
 namespace spotify
@@ -110,13 +111,69 @@ std::string Session::username() const
     return ctx_->config.username;
 }
 
-bool Session::play(const Resolved &resolved, std::vector<std::string> &rest)
+bool Session::play(const Resolved &resolved, std::vector<std::string> &rest, std::size_t start)
 {
-    const std::size_t first = std::min(resolved.tracks.size(), kQueueWindow);
-    const std::vector<std::string> window(resolved.tracks.begin(),
-                                          resolved.tracks.begin() + static_cast<std::ptrdiff_t>(first));
-    rest.assign(resolved.tracks.begin() + static_cast<std::ptrdiff_t>(first), resolved.tracks.end());
-    return handler_->loadContext(resolved.context_uri, window, 0, resolved.shuffle);
+    // The window starts a little before `start` so Previous still works.
+    const std::size_t count = resolved.tracks.size();
+    start = std::min(start, count == 0 ? 0 : count - 1);
+    const std::size_t begin = start > 20 ? start - 20 : 0;
+    const std::size_t end = std::min(count, begin + kQueueWindow);
+    const std::vector<std::string> window(resolved.tracks.begin() + static_cast<std::ptrdiff_t>(begin),
+                                          resolved.tracks.begin() + static_cast<std::ptrdiff_t>(end));
+    rest.assign(resolved.tracks.begin() + static_cast<std::ptrdiff_t>(end), resolved.tracks.end());
+    return handler_->loadContext(resolved.context_uri, window, static_cast<std::uint32_t>(start - begin),
+                                 resolved.shuffle);
+}
+
+void Session::seek(std::uint32_t ms)
+{
+    handler_->seekMs(ms);
+}
+
+bool Session::jump(int index)
+{
+    return index >= 0 && handler_->jumpTo(static_cast<std::uint32_t>(index));
+}
+
+namespace
+{
+
+// A 16-byte Spotify id as its base62 URI part (phones may send ids only).
+std::string base62(std::vector<std::uint8_t> number)
+{
+    static const char kDigits[] = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    std::string out;
+    for (int i = 0; i < 22; ++i)
+    {
+        int remainder = 0;
+        for (std::uint8_t &byte : number)
+        {
+            const int value = remainder * 256 + byte;
+            byte = static_cast<std::uint8_t>(value / 62);
+            remainder = value % 62;
+        }
+        out.insert(out.begin(), kDigits[remainder]);
+    }
+    return out;
+}
+
+} // namespace
+
+std::vector<std::string> Session::queue(int &index) const
+{
+    std::vector<std::string> uris;
+    for (const cspot::TrackReference &track : handler_->getTrackQueue()->snapshot(index))
+    {
+        if (!track.uri.empty())
+            uris.push_back(track.uri);
+        else if (track.gid.size() == 16)
+            uris.push_back((track.type == cspot::TrackReference::Type::EPISODE ? "spotify:episode:"
+                                                                                : "spotify:track:") +
+                           base62(track.gid));
+        else
+            uris.emplace_back();
+    }
+    return uris;
 }
 
 void Session::append(const std::vector<std::string> &tracks)

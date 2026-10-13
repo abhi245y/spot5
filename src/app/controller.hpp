@@ -21,6 +21,8 @@
 
 #include <cstdint>
 #include <deque>
+#include <map>
+#include <set>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -59,7 +61,11 @@ struct Status
     std::string username; // the signed-in account, once connected
     NowPlaying now_playing;
     std::shared_ptr<const screens::HomePage> home; // kept across reconnects
+    std::shared_ptr<const screens::PlaylistPage> page;
+    std::shared_ptr<const screens::Queue> queue;
     bool home_loading = false;
+    int artwork_done = 0; // reported by the app while Step::artwork
+    int artwork_total = 0;
     std::string notice; // see screens::Model::notice
     std::uint32_t notice_id = 0;
 };
@@ -81,8 +87,11 @@ class Controller
     // session; a new device name reconnects so the phone sees it.
     void apply(const screens::Settings &settings);
 
-    // Plays a Home card on this console (resolved off the controller thread).
-    void play(const screens::PlayRequest &request);
+    // Plays, opens pages, seeks... (screens::Request; done on the controller thread).
+    void request(const screens::Request &request);
+
+    // Launch: how many of Home's covers are loaded (the app loads them).
+    void report_artwork(int done, int total);
 
   private:
     static void *thread_entry(void *self);
@@ -99,6 +108,9 @@ class Controller
     void set_step(screens::Step step);
     void publish_now_playing();
     void step_browser();
+    void handle_request(const screens::Request &request);
+    void publish_page();
+    void step_queue();
     void refresh_home(const char *why);
     void set_notice(const std::string &text);
 
@@ -107,10 +119,20 @@ class Controller
     std::unique_ptr<spotify::Pairing> pairing_; // only in Pairing (and the login after it)
     std::int64_t reconnect_started_ms_ = 0;
     std::int64_t home_asked_ms_ = 0; // last refresh request, to keep calls rare
+    std::int64_t artwork_since_ms_ = 0; // launch: when Step::artwork began
     // A long context started from Home: tracks not queued yet, added a
     // window at a time as the queue runs low (dropped if the phone takes over).
     std::vector<std::string> rest_;
     std::string rest_context_;
+    // Pages and queue (controller thread): track details by URI, and the
+    // URIs already asked for (so a row on screen is asked once).
+    std::map<std::string, screens::TrackRow> details_;
+    std::set<std::string> described_;
+    screens::PlaylistPage page_;
+    std::vector<std::string> page_uris_;
+    std::vector<std::string> queue_uris_;
+    int queue_index_ = -1;
+    bool queue_dirty_ = false;
 
     screens::Settings settings_; // what the session runs with (controller thread)
 
@@ -119,7 +141,7 @@ class Controller
     Status status_;
     std::deque<Command> commands_;
     std::optional<screens::Settings> pending_settings_;
-    std::optional<screens::PlayRequest> pending_play_;
+    std::deque<screens::Request> requests_;
 };
 
 } // namespace app

@@ -84,7 +84,8 @@ std::vector<Section> parse_home(std::string_view reply)
     return sections;
 }
 
-std::string traits_request(const std::vector<std::string> &uris, const std::string &country)
+std::string metadata_request(const std::vector<std::string> &uris, const std::string &country,
+                             std::initializer_list<int> kinds)
 {
     std::string header;
     pb::put_bytes_field(header, 1, country);
@@ -95,7 +96,7 @@ std::string traits_request(const std::vector<std::string> &uris, const std::stri
     {
         std::string entity;
         pb::put_bytes_field(entity, 1, uri);
-        for (int kind : {kIdentityTrait, kVisualIdentityTrait})
+        for (int kind : kinds)
         {
             std::string query;
             pb::put_varint_field(query, 1, static_cast<std::uint64_t>(kind));
@@ -163,6 +164,73 @@ bool parse_traits(std::string_view reply, Entities &entities, std::int64_t now_m
     return kinds.ok();
 }
 
+bool parse_tracks(std::string_view reply, std::map<std::string, screens::TrackRow> &tracks)
+{
+    // Same envelope as the traits; the value is spotify.metadata.Track:
+    // 2 name, 3 album {2 name, 17 cover group {1 image {1 file id, 2 size}}},
+    // 4 artist {2 name} (repeated), 7 duration ms.
+    pb::Reader kinds(reply);
+    pb::Field kind;
+    while (kinds.next(kind))
+    {
+        if (kind.number != 2 || kind.wire != 2)
+            continue;
+        pb::Reader list(kind.bytes);
+        pb::Field data;
+        while (list.next(data))
+        {
+            if (data.number != 3 || data.wire != 2)
+                continue;
+            const std::string uri(pb::first(data.bytes, 2));
+            const std::string_view track = pb::at(data.bytes, {3, 2});
+            if (uri.empty() || track.empty())
+                continue;
+            screens::TrackRow row;
+            row.uri = uri;
+            row.title = std::string(pb::first(track, 2));
+            const std::string_view album = pb::first(track, 3);
+            row.album = std::string(pb::first(album, 2));
+            pb::Reader fields(track);
+            pb::Field f;
+            std::vector<std::string> artists;
+            while (fields.next(f))
+            {
+                if (f.number == 4 && f.wire == 2)
+                    artists.emplace_back(pb::first(f.bytes, 2));
+                else if (f.number == 7 && f.wire == 0)
+                    row.duration_ms = static_cast<std::uint32_t>(f.varint);
+            }
+            for (std::size_t i = 0; i < artists.size(); ++i)
+                row.artists += (i == 0 ? "" : i + 1 == artists.size() ? " & " : ", ") + artists[i];
+            // The 300 px cover (size 0): its file id, as hex, is the image id.
+            pb::Reader images(pb::first(album, 17));
+            pb::Field image;
+            while (images.next(image))
+            {
+                std::uint64_t size = 99;
+                pb::Reader parts(image.bytes);
+                pb::Field part;
+                while (parts.next(part))
+                    if (part.number == 2 && part.wire == 0)
+                        size = part.varint;
+                const std::string_view id = pb::first(image.bytes, 1);
+                if (size == 0 && !id.empty())
+                {
+                    static const char kHex[] = "0123456789abcdef";
+                    row.image = "https://i.scdn.co/image/";
+                    for (unsigned char c : id)
+                        row.image += {kHex[c >> 4], kHex[c & 15]};
+                }
+            }
+            if (!row.title.empty())
+                tracks[uri] = std::move(row);
+        }
+        if (!list.ok())
+            return false;
+    }
+    return kinds.ok();
+}
+
 screens::HomePage build_page(const std::vector<Section> &sections, const Entities &entities)
 {
     screens::HomePage page;
@@ -183,7 +251,7 @@ screens::HomePage build_page(const std::vector<Section> &sections, const Entitie
             card.subtitle = subtitle(entity);
             card.description = entity.description;
             card.image = !entity.images[1].empty() ? entity.images[1] : entity.images[2];
-            card.image_large = !entity.images[2].empty() ? entity.images[2] : card.image;
+            card.image_large = larger_cover(!entity.images[2].empty() ? entity.images[2] : card.image);
             card.round = entity.type == "Artist";
             shelf.cards.push_back(std::move(card));
         }

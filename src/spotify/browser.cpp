@@ -7,6 +7,7 @@
 #include <chrono>
 #include <cstdio>
 #include <exception>
+#include <map>
 #include <random>
 
 #include "AccessKeyFetcher.h"
@@ -105,20 +106,53 @@ Browser::~Browser()
 
 void Browser::refresh()
 {
-    {
-        std::scoped_lock guard(lock_);
-        jobs_.push_back({true, {}});
-    }
+    Job job;
+    job.kind = Job::Kind::refresh;
+    std::scoped_lock guard(lock_);
+    jobs_.push_back(std::move(job));
     wake_.notify_all();
 }
 
 void Browser::resolve(const screens::PlayRequest &request)
 {
-    {
-        std::scoped_lock guard(lock_);
-        jobs_.push_back({false, request});
-    }
+    Job job;
+    job.kind = Job::Kind::resolve;
+    job.play = request;
+    std::scoped_lock guard(lock_);
+    jobs_.push_back(std::move(job));
     wake_.notify_all();
+}
+
+void Browser::open(const std::string &uri)
+{
+    Job job;
+    job.kind = Job::Kind::open;
+    job.uri = uri;
+    std::scoped_lock guard(lock_);
+    jobs_.push_back(std::move(job));
+    wake_.notify_all();
+}
+
+void Browser::describe(const std::vector<std::string> &uris)
+{
+    Job job;
+    job.kind = Job::Kind::describe;
+    job.uris = uris;
+    std::scoped_lock guard(lock_);
+    jobs_.push_back(std::move(job));
+    wake_.notify_all();
+}
+
+std::optional<Resolved> Browser::take_opened()
+{
+    std::scoped_lock guard(lock_);
+    return std::exchange(opened_, std::nullopt);
+}
+
+std::vector<screens::TrackRow> Browser::take_described()
+{
+    std::scoped_lock guard(lock_);
+    return std::exchange(described_, {});
 }
 
 std::shared_ptr<const screens::HomePage> Browser::take_page()
@@ -168,27 +202,42 @@ void Browser::run()
         // Replies are network input: a surprise in one must not end the app.
         try
         {
-            if (job.refresh)
+            switch (job.kind)
             {
+            case Job::Kind::refresh:
                 fetch_home();
-            }
-            else
+                break;
+            case Job::Kind::resolve:
             {
                 Resolved resolved = fetch_tracks(job.play);
                 std::scoped_lock guard(lock_);
                 resolved_ = std::move(resolved);
+                break;
+            }
+            case Job::Kind::open:
+            {
+                Resolved opened = fetch_tracks({job.uri, false});
+                opened.context_uri = job.uri; // the card's own URI (Liked Songs)
+                std::scoped_lock guard(lock_);
+                opened_ = std::move(opened);
+                break;
+            }
+            case Job::Kind::describe:
+                fetch_details(job.uris);
+                break;
             }
         }
         catch (const std::exception &e)
         {
-            hui::sys::log("[HOME] %s failed: %s", job.refresh ? "Home" : "resolve", e.what());
-            if (!job.refresh)
-            {
-                Resolved failed;
-                failed.error = "Couldn't load it. Try again in a moment.";
-                std::scoped_lock guard(lock_);
+            hui::sys::log("[HOME] job %d failed: %s", static_cast<int>(job.kind), e.what());
+            Resolved failed;
+            failed.context_uri = job.kind == Job::Kind::open ? job.uri : job.play.uri;
+            failed.error = "Couldn't load it. Try again in a moment.";
+            std::scoped_lock guard(lock_);
+            if (job.kind == Job::Kind::resolve)
                 resolved_ = std::move(failed);
-            }
+            else if (job.kind == Job::Kind::open)
+                opened_ = std::move(failed);
         }
         std::scoped_lock guard(lock_);
         working_ = false;
@@ -233,7 +282,7 @@ void Browser::fetch_home()
         const std::vector<std::string> batch(
             wanted.begin() + static_cast<std::ptrdiff_t>(first),
             wanted.begin() + static_cast<std::ptrdiff_t>(std::min(wanted.size(), first + kTraitsBatch)));
-        const std::string request = home::traits_request(batch, ctx_->config.countryCode);
+        const std::string request = home::metadata_request(batch, ctx_->config.countryCode);
         const Reply traits = call(*keys_, "extended-metadata/v0/extended-metadata",
                                   "application/protobuf", &request);
         if (traits.status != 200 || !home::parse_traits(traits.body, entities_, now))
@@ -249,6 +298,31 @@ void Browser::fetch_home()
     std::scoped_lock guard(lock_);
     page_ = std::move(page);
     fetched_ms_ = now;
+}
+
+void Browser::fetch_details(const std::vector<std::string> &uris)
+{
+    for (std::size_t first = 0; first < uris.size(); first += kTraitsBatch)
+    {
+        {
+            std::scoped_lock guard(lock_);
+            if (stop_)
+                return;
+        }
+        if (first > 0)
+            hui::sys::sleep_us(300000);
+        const std::vector<std::string> batch(
+            uris.begin() + static_cast<std::ptrdiff_t>(first),
+            uris.begin() + static_cast<std::ptrdiff_t>(std::min(uris.size(), first + kTraitsBatch)));
+        const std::string request = home::metadata_request(batch, ctx_->config.countryCode, {home::kTrackV4});
+        const Reply reply = call(*keys_, "extended-metadata/v0/extended-metadata", "application/protobuf", &request);
+        std::map<std::string, screens::TrackRow> rows;
+        if (reply.status != 200 || !home::parse_tracks(reply.body, rows))
+            return;
+        std::scoped_lock guard(lock_);
+        for (auto &[uri, row] : rows)
+            described_.push_back(std::move(row));
+    }
 }
 
 Resolved Browser::fetch_tracks(const screens::PlayRequest &request)

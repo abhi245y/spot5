@@ -60,7 +60,7 @@ struct Context
     // Covers by URL: returns what is loaded and asks for the rest. Cheap to
     // call every frame for every visible card.
     std::function<Art(const std::string &url)> art;
-    std::optional<PlayRequest> play; // set by a screen; the app sends it on, then clears
+    std::vector<Request> requests; // added by screens; the app sends them on, then clears
 };
 
 class Screen

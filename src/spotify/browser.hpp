@@ -57,13 +57,19 @@ class Browser
 
     // Fetch Home again (the caller decides how often).
     void refresh();
-    // Resolve a Home card into tracks.
+    // Resolve a Home card into tracks (to play them).
     void resolve(const screens::PlayRequest &request);
+    // Resolve a card's tracks for its page (take_opened()).
+    void open(const std::string &uri);
+    // Names, artists, covers and durations for these tracks (take_described()).
+    void describe(const std::vector<std::string> &uris);
 
     // The newest page, once (after construction from the cache, and after
     // each refresh); null when nothing new.
     std::shared_ptr<const screens::HomePage> take_page();
     std::optional<Resolved> take_resolved();
+    std::optional<Resolved> take_opened();
+    std::vector<screens::TrackRow> take_described();
     bool busy();
     // When Home was last fetched successfully (ms since epoch), 0 if never.
     std::int64_t fetched_ms();
@@ -71,14 +77,17 @@ class Browser
   private:
     struct Job
     {
-        bool refresh = false;
-        screens::PlayRequest play;
+        enum class Kind { refresh, resolve, open, describe } kind = Kind::refresh;
+        screens::PlayRequest play;          // resolve
+        std::string uri;                    // open
+        std::vector<std::string> uris;      // describe
     };
 
     static void *entry(void *self);
     void run();
     void fetch_home();
     Resolved fetch_tracks(const screens::PlayRequest &request);
+    void fetch_details(const std::vector<std::string> &uris);
 
     std::shared_ptr<cspot::Context> ctx_;
     std::string timezone_;
@@ -97,6 +106,8 @@ class Browser
     bool stop_ = false;
     std::shared_ptr<const screens::HomePage> page_;
     std::optional<Resolved> resolved_;
+    std::optional<Resolved> opened_;
+    std::vector<screens::TrackRow> described_;
     std::int64_t fetched_ms_ = 0;
 };
 

@@ -70,11 +70,16 @@ class Session
     // the first kQueueWindow tracks are queued (a Spirc frame carries the
     // whole queue); the rest are returned for append() as the queue runs low.
     static constexpr std::size_t kQueueWindow = 100;
-    bool play(const Resolved &resolved, std::vector<std::string> &rest);
+    bool play(const Resolved &resolved, std::vector<std::string> &rest, std::size_t start = 0);
     void append(const std::vector<std::string> &tracks);
     // Tracks queued after the current one, and the context being played.
     std::size_t tracks_remaining() const;
     std::string context_uri() const;
+    // Seek within the playing track; play queue position `index`.
+    void seek(std::uint32_t ms);
+    bool jump(int index);
+    // The queued track URIs and the playing position (-1: none).
+    std::vector<std::string> queue(int &index) const;
 
     // Playback commands, as if pressed on the phone.
     void set_paused(bool paused);

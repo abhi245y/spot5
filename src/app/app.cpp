@@ -30,6 +30,7 @@
 #include "platform/ps5/system.hpp"
 #include "screens/shell.hpp"
 #include "spotify/cover.hpp"
+#include "spotify/home.hpp"
 #include "ui/fonts.hpp"
 
 namespace app
@@ -152,6 +153,10 @@ screens::Model model_from(const Status &status)
     model.username = status.username;
     model.home = status.home;
     model.home_loading = status.home_loading;
+    model.page = status.page;
+    model.queue = status.queue;
+    model.artwork_done = status.artwork_done;
+    model.artwork_total = status.artwork_total;
     model.notice = status.notice;
     model.notice_id = status.notice_id;
     const NowPlaying &now = status.now_playing;
@@ -182,7 +187,8 @@ class Covers
     // Fills in the model's cover once it is loaded; asks for it otherwise.
     void apply(screens::Track &track)
     {
-        loader_.request(track.image_url);
+        const std::string url = spotify::home::larger_cover(track.image_url);
+        loader_.request(url);
         if (std::optional<spotify::Cover> cover = loader_.take())
         {
             Entry e{cover->url,
@@ -197,7 +203,7 @@ class Covers
         }
         for (const Entry &e : textures_)
         {
-            if (!track.image_url.empty() && e.url == track.image_url)
+            if (!url.empty() && e.url == url)
             {
                 track.art = e.texture;
                 track.palette = e.palette;
@@ -214,7 +220,7 @@ class Covers
         screens::style::AlbumPalette palette;
     };
     gfx::Renderer &renderer_;
-    spotify::CoverLoader loader_;
+    spotify::CoverLoader loader_{1, 1, paths::kCovers};
     std::deque<Entry> textures_;
 };
 
@@ -247,8 +253,10 @@ class CardArt
             entry.texture = renderer_.batch().create_texture(cover->width, cover->height, cover->rgba.data());
             entry.palette = cover->palette;
             entry.used = frame_;
+            entry.bytes = cover->rgba.size();
+            bytes_ += entry.bytes;
         }
-        while (entries_.size() > kMaxTextures)
+        while (bytes_ > kMaxBytes)
         {
             auto oldest = entries_.end();
             for (auto it = entries_.begin(); it != entries_.end(); ++it)
@@ -257,6 +265,7 @@ class CardArt
             if (oldest == entries_.end())
                 break; // everything is on screen
             glDeleteTextures(1, &oldest->second.texture);
+            bytes_ -= oldest->second.bytes;
             entries_.erase(oldest);
         }
     }
@@ -273,20 +282,39 @@ class CardArt
         return {found->second.texture, found->second.palette};
     }
 
+    // Asks for every cover of a page (the launch screen waits for them).
+    // Returns how many of `urls` are loaded.
+    std::size_t preload(const std::vector<std::string> &urls)
+    {
+        std::size_t ready = 0;
+        for (const std::string &url : urls)
+        {
+            if (entries_.count(url))
+                ++ready;
+            else
+                loader_.request(url);
+        }
+        return ready;
+    }
+
   private:
-    // ponytail: 96 covers at 300 px is ~35 MB of textures; a shelf of 640 px
-    // heroes would be more. Lower it if memory gets tight.
-    static constexpr std::size_t kMaxTextures = 96;
+    // Every Home card at 300 px is ~70 MB; big covers (1000 px, 4 MB each)
+    // are evicted first by age once the budget is reached.
+    static constexpr std::size_t kMaxBytes = 160u << 20;
     struct Entry
     {
         std::uint32_t texture = 0;
         screens::style::AlbumPalette palette;
         std::uint64_t used = 0;
+        std::size_t bytes = 0;
     };
     gfx::Renderer &renderer_;
-    spotify::CoverLoader loader_{12}; // covers scrolled past are dropped
+    // Long queue (the whole page at launch), three downloads at a time,
+    // kept on disk for the next launch.
+    spotify::CoverLoader loader_{512, 3, paths::kCovers};
     std::unordered_map<std::string, Entry> entries_;
     std::uint64_t frame_ = 0;
+    std::size_t bytes_ = 0;
 };
 
 } // namespace
@@ -358,6 +386,16 @@ void App::run()
         if (model.has_track)
             covers.apply(model.track);
         card_art.pump();
+        // Launch: every Home cover, before the loader hands over.
+        if (model.step == screens::Step::artwork && model.home)
+        {
+            std::vector<std::string> urls;
+            for (const screens::Shelf &shelf : model.home->shelves)
+                for (const screens::Card &card : shelf.cards)
+                    if (!card.image.empty())
+                        urls.push_back(card.image);
+            controller.report_artwork(static_cast<int>(card_art.preload(urls)), static_cast<int>(urls.size()));
+        }
         ui::Feedback feedback;
         std::vector<screens::Command> commands;
         shell.update(model, input, dt, feedback, commands);
@@ -367,11 +405,9 @@ void App::run()
                 quit(display);
             controller.send(command);
         }
-        if (context.play)
-        {
-            controller.play(*context.play);
-            context.play.reset();
-        }
+        for (const screens::Request &request : context.requests)
+            controller.request(request);
+        context.requests.clear();
         // Settings changed in Control Room: apply now, save once the user
         // stops (a held slider writes the file once, not per step).
         if (context.settings_changed)

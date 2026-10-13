@@ -391,7 +391,9 @@ class Home final : public Screen
         {
             if (action_ < 2 && focused_card())
             {
-                context_.play = PlayRequest{focused_card()->uri, action_ == 1};
+                Request request;
+                request.play = PlayRequest{focused_card()->uri, action_ == 1, 0};
+                context_.requests.push_back(request);
                 feedback.play(audio::Cue::launch);
                 feedback.rumble(0.7f, 0.18f);
             }

@@ -28,8 +28,9 @@ APP_DEFINITIONS := CSPOT_REV=$(CSPOT_REV) GL_GLEXT_PROTOTYPES=1 BELL_TASK_MIN_ST
 APP_INCLUDE_PATHS := src $(OPENGL_SDK)/include \
 	$(BELL)/main/io/include $(BELL)/main/utilities/include $(BELL)/main/platform \
 	$(BELL)/external/nanopb $(BELL)/external/nlohmann_json/include $(BELL)/external/tremor \
-	$(BELL)/external/civetweb/include $(CSPOT)/include build/deps/proto .deps/src/mbedtls-3.6.4/include
-APP_STATIC_ARCHIVES := build/deps/libbell.a build/deps/libmbedtls.a \
+	$(BELL)/external/civetweb/include $(CSPOT)/include build/deps/proto .deps/src/mbedtls-3.6.4/include \
+	.deps/src/libwebp-1.4.0/src
+APP_STATIC_ARCHIVES := build/deps/libbell.a build/deps/libmbedtls.a build/deps/libwebpdec.a \
 	.deps/ps5-opengl/libps5opengl-group.a
 APP_IMPORT_STUBS := $(OPENGL_SDK)/lib/libSceAgc.so $(OPENGL_SDK)/lib/libSceAgcDriver.so
 

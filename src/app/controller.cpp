@@ -7,8 +7,10 @@
 #include <chrono>
 #include <cstdio>
 #include <exception>
+#include <random>
 
 #include "platform/ps5/system.hpp"
+#include "spotify/home.hpp"
 
 namespace app
 {
@@ -22,6 +24,9 @@ constexpr std::int64_t kReconnectGiveUpMs = 30000;
 constexpr std::int64_t kHomeMaxAgeMs = 3600 * 1000;
 constexpr std::int64_t kManualRefreshGapMs = 60 * 1000;
 constexpr std::int64_t kRetryGapMs = 10 * 60 * 1000;
+// Launch waits for Home's covers at most this long (a dead link must not
+// keep the app on the loader).
+constexpr std::int64_t kArtworkWaitMs = 20000;
 // Add the next window of a long context when this many tracks are left.
 constexpr std::size_t kQueueLowWater = 10;
 
@@ -84,10 +89,17 @@ void Controller::apply(const screens::Settings &settings)
     pending_settings_ = settings;
 }
 
-void Controller::play(const screens::PlayRequest &request)
+void Controller::request(const screens::Request &request)
 {
     std::scoped_lock guard(lock_);
-    pending_play_ = request;
+    requests_.push_back(request);
+}
+
+void Controller::report_artwork(int done, int total)
+{
+    std::scoped_lock guard(lock_);
+    status_.artwork_done = done;
+    status_.artwork_total = total;
 }
 
 Status Controller::status()
@@ -291,7 +303,8 @@ void Controller::start_session(std::shared_ptr<cspot::LoginBlob> login)
         set_state(State::Error, error);
         return;
     }
-    set_step(screens::Step::done);
+    // Logged in; the loader goes on with Home and its covers (step_browser).
+    set_step(screens::Step::home);
     {
         std::scoped_lock guard(lock_);
         status_.username = session_->username();
@@ -343,13 +356,33 @@ void Controller::step_browser()
         else
             set_notice("Couldn't start playback");
     }
-    std::optional<screens::PlayRequest> request;
+    std::deque<screens::Request> requests;
     {
         std::scoped_lock guard(lock_);
-        request.swap(pending_play_);
+        requests.swap(requests_);
     }
-    if (request)
-        browser.resolve(*request);
+    for (const screens::Request &request : requests)
+        handle_request(request);
+
+    // A page's track list, then details as they arrive.
+    if (std::optional<spotify::Resolved> opened = browser.take_opened())
+    {
+        if (opened->context_uri == page_.card.uri)
+        {
+            page_uris_ = opened->tracks;
+            page_.loading = false;
+            page_.error = opened->tracks.empty() ? opened->error : std::string();
+            publish_page();
+        }
+    }
+    if (std::vector<screens::TrackRow> rows = browser.take_described(); !rows.empty())
+    {
+        for (screens::TrackRow &row : rows)
+            details_[row.uri] = std::move(row);
+        publish_page();
+        queue_dirty_ = true;
+    }
+    step_queue();
 
     // Page in the rest of a long context before the queue runs dry. The
     // locked count is checked first; the context only when it is low.
@@ -374,8 +407,128 @@ void Controller::step_browser()
         (home_asked_ms_ == 0 || now_ms() - home_asked_ms_ > kRetryGapMs))
         refresh_home(browser.fetched_ms() == 0 ? "first time" : "over an hour old");
 
+    // Launch: Home first (if it was refreshed above), then its covers.
+    const screens::Step step = status().step;
+    if (step == screens::Step::home && !browser.busy())
+    {
+        artwork_since_ms_ = now_ms();
+        set_step(screens::Step::artwork);
+    }
+    else if (step == screens::Step::artwork)
+    {
+        const Status now = status();
+        const bool loaded = now.artwork_total > 0 && now.artwork_done >= now.artwork_total;
+        if (loaded || !now.home || now_ms() - artwork_since_ms_ > kArtworkWaitMs)
+        {
+            hui::sys::log("[APP] launch: %d/%d covers loaded", now.artwork_done, now.artwork_total);
+            set_step(screens::Step::done);
+        }
+    }
+
     std::scoped_lock guard(lock_);
     status_.home_loading = browser.busy();
+}
+
+void Controller::handle_request(const screens::Request &request)
+{
+    using Kind = screens::Request::Kind;
+    spotify::Browser &browser = session_->browser();
+    switch (request.kind)
+    {
+    case Kind::play:
+        // From an open page: its track list is here already (start anywhere).
+        if (request.play.uri == page_.card.uri && !page_uris_.empty())
+        {
+            spotify::Resolved resolved;
+            resolved.context_uri = spotify::home::playable_uri(page_.card.uri, session_->username());
+            resolved.tracks = page_uris_;
+            resolved.shuffle = request.play.shuffle;
+            std::size_t start = static_cast<std::size_t>(std::max(0, request.play.index));
+            if (resolved.shuffle)
+            {
+                std::minstd_rand random(static_cast<std::uint32_t>(now_ms()));
+                std::shuffle(resolved.tracks.begin(), resolved.tracks.end(), random);
+                start = 0;
+            }
+            rest_.clear();
+            if (session_->play(resolved, rest_, start))
+                rest_context_ = resolved.context_uri;
+            else
+                set_notice("Couldn't start playback");
+        }
+        else
+        {
+            browser.resolve(request.play);
+        }
+        break;
+    case Kind::open:
+        page_ = {};
+        page_.card = request.card;
+        page_uris_.clear();
+        publish_page();
+        browser.open(request.card.uri);
+        break;
+    case Kind::describe:
+    {
+        std::vector<std::string> wanted;
+        for (const std::string &uri : request.uris)
+            if (!uri.empty() && !details_.count(uri) && described_.insert(uri).second)
+                wanted.push_back(uri);
+        if (!wanted.empty())
+            browser.describe(wanted);
+        break;
+    }
+    case Kind::seek:
+        session_->seek(request.ms);
+        break;
+    case Kind::jump:
+        if (!session_->jump(request.index))
+            set_notice("That track is no longer in the queue");
+        break;
+    }
+}
+
+// The open page with every known detail filled in.
+void Controller::publish_page()
+{
+    auto page = std::make_shared<screens::PlaylistPage>(page_);
+    page->tracks.reserve(page_uris_.size());
+    for (const std::string &uri : page_uris_)
+    {
+        const auto found = details_.find(uri);
+        page->tracks.push_back(found != details_.end() ? found->second : screens::TrackRow{uri});
+    }
+    std::scoped_lock guard(lock_);
+    status_.page = std::move(page);
+}
+
+// Now Playing's queue: a window around the playing track, rebuilt when the
+// queue moves or details arrive.
+void Controller::step_queue()
+{
+    int index = -1;
+    std::vector<std::string> uris = session_->queue(index);
+    if (index == queue_index_ && uris == queue_uris_ && !queue_dirty_)
+        return;
+    queue_index_ = index;
+    queue_uris_ = std::move(uris);
+    queue_dirty_ = false;
+    auto queue = std::make_shared<screens::Queue>();
+    if (index >= 0 && index < static_cast<int>(queue_uris_.size()))
+    {
+        constexpr int kBefore = 1, kAfter = 50;
+        queue->first = std::max(0, index - kBefore);
+        const int end = std::min(static_cast<int>(queue_uris_.size()), index + kAfter + 1);
+        for (int i = queue->first; i < end; ++i)
+        {
+            const std::string &uri = queue_uris_[static_cast<std::size_t>(i)];
+            const auto found = details_.find(uri);
+            queue->tracks.push_back(found != details_.end() ? found->second : screens::TrackRow{uri});
+        }
+        queue->playing = index - queue->first;
+    }
+    std::scoped_lock guard(lock_);
+    status_.queue = queue->tracks.empty() ? nullptr : std::move(queue);
 }
 
 void Controller::refresh_home(const char *why)

@@ -99,7 +99,7 @@ int main(int argc, char **argv)
     assert(page.shelves[1].cards[1].round);
 
     // Request: decodes back to the URIs with both trait kinds.
-    std::string request = home::traits_request({"spotify:playlist:p1"}, "IN");
+    std::string request = home::metadata_request({"spotify:playlist:p1"}, "IN");
     assert(pb::at(request, {1, 1}) == "IN");
     assert(pb::at(request, {2, 1}) == "spotify:playlist:p1");
 
@@ -112,6 +112,26 @@ int main(int argc, char **argv)
     assert(!home::from_json("not json", sections2, entities2, fetched));
 
     assert(home::playable_uri("spotify:user:anonymized:collection", "abhi") == "spotify:user:abhi:collection");
+
+    // Tracks (TRACK_V4): name, artists joined, duration, 300 px cover id.
+    {
+        std::string image;
+        pb::put_bytes_field(image, 1, std::string("\xab\x67", 2));
+        pb::put_varint_field(image, 2, 0);
+        std::string album = msg(2, "Album") + msg(17, msg(1, image));
+        std::string track = msg(2, "Song") + msg(3, album) + msg(4, msg(2, "A")) + msg(4, msg(2, "B")) +
+                            msg(4, msg(2, "C"));
+        pb::put_varint_field(track, 7, 123000);
+        std::string any = msg(1, "type.googleapis.com/spotify.metadata.Track") + msg(2, track);
+        std::map<std::string, screens::TrackRow> rows;
+        assert(home::parse_tracks(msg(2, msg(3, msg(2, "spotify:track:t") + msg(3, any))), rows));
+        const screens::TrackRow &row = rows["spotify:track:t"];
+        assert(row.title == "Song" && row.album == "Album" && row.duration_ms == 123000);
+        assert(row.artists == "A, B & C");
+        assert(row.image == "https://i.scdn.co/image/ab67");
+    }
+    assert(home::larger_cover("https://i.scdn.co/image/ab67616d0000b273abc") ==
+           "https://i.scdn.co/image/ab67616d000082c1abc");
 
     if (argc == 3)
     {
