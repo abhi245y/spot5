@@ -28,6 +28,7 @@
 #include "gfx/gl_program.hpp"
 #include "gfx/renderer.hpp"
 #include "screens/shell.hpp"
+#include "third_party/stb/stb_image.h"
 #include "ui/fonts.hpp"
 
 using namespace hui;
@@ -99,6 +100,21 @@ void playing(Model &m, const char *id, const char *title, const char *artist, co
     m.paused = false;
 }
 
+// Test covers (tests/covers, made with ffmpeg): textures and palettes.
+struct TestCover
+{
+    std::uint32_t texture = 0;
+    screens::style::AlbumPalette palette;
+};
+TestCover g_covers[2];
+
+void with_cover(Model &m, int which)
+{
+    m.track.art = g_covers[which].texture;
+    m.track.palette = g_covers[which].palette;
+    m.track.has_palette = true;
+}
+
 const std::vector<Beat> &script()
 {
     static const std::vector<Beat> beats = {
@@ -133,6 +149,8 @@ const std::vector<Beat> &script()
         {2.0f, nullptr, 0, "06-home"},
         {0.3f, [](Model &m) { playing(m, "a", "Aashiqana", "Chaar Diwaari", "Aashiqana", 47000, 214000); },
          0, "07-home-to-playing"},
+        {0.4f, nullptr, 0, "08a-cover-pending"},
+        {0.35f, [](Model &m) { with_cover(m, 0); }, 0, "08b-cover-fading-in"},
         {2.5f, nullptr, 0, "08-playing"},
         {1.2f, [](Model &m) { m.paused = true; }, 0, "09-paused"},
         {0.6f, [](Model &m) { m.paused = false; }},
@@ -142,6 +160,7 @@ const std::vector<Beat> &script()
                      1000, 213573);
          },
          0, "10-track-change"},
+        {0.1f, [](Model &m) { with_cover(m, 1); }},
         {2.0f, nullptr, 0, "11-playing-long-title"},
         {1.5f, [](Model &m) { m.connection = Connection::reconnecting; }, 0, "12-reconnecting"},
         {0.5f, [](Model &m) { m.connection = Connection::ready; }},
@@ -177,6 +196,24 @@ int main(int argc, char **argv)
         !load_font(renderer, assets + "/fonts/montserrat-medium.huifont", display, fonts.display) ||
         !load_font(renderer, assets + "/fonts/dejavu-sans-mono.huifont", mono, fonts.mono))
         return 1;
+
+    for (int i = 0; i < 2; ++i)
+    {
+        std::string data;
+        const std::string path = assets + "/../tests/covers/" + (i ? "b.jpg" : "a.jpg");
+        int w = 0, h = 0, n = 0;
+        if (save::read_file(path, &data))
+            if (std::uint8_t *px = stbi_load_from_memory(
+                    reinterpret_cast<const std::uint8_t *>(data.data()), static_cast<int>(data.size()),
+                    &w, &h, &n, 4))
+            {
+                g_covers[i].texture = renderer.batch().create_texture(w, h, px);
+                g_covers[i].palette = screens::style::palette_from_pixels(px, w, h);
+                stbi_image_free(px);
+            }
+        if (!g_covers[i].texture)
+            std::fprintf(stderr, "cannot load %s\n", path.c_str());
+    }
 
     gfx::Canvas target;
     if (!target.create(kWidth, kHeight, 1))

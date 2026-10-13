@@ -86,6 +86,7 @@ struct Shown
 {
     std::string title, artist, album;
     style::AlbumPalette palette;
+    std::uint32_t art = 0; // the real cover once loaded
 };
 
 class NowPlaying final : public Screen
@@ -119,11 +120,25 @@ class NowPlaying final : public Screen
             }
             track_id_ = model.track.id;
             current_ = {model.track.title, model.track.artist, model.track.album,
-                        style::album_palette(model.track.album)};
+                        model.track.has_palette ? model.track.palette
+                                                : style::album_palette(model.track.album),
+                        model.track.art};
             apply_palette(previous_.title.empty() && !swap_.running);
             travel_ = next_travel_;
             next_travel_ = 1.0f;
         }
+        else if (model.track.art != current_.art)
+        {
+            // The cover arrived after the track: fade it in and ease the
+            // colours from the name-based guess to the cover's own.
+            current_.art = model.track.art;
+            if (model.track.has_palette)
+                current_.palette = model.track.palette;
+            apply_palette(false);
+            art_in_.snap(0.0f);
+            art_in_.target = 1.0f;
+        }
+        art_in_.update(dt, context_.reduced_motion ? 40.0f : 6.0f);
         duration_ = std::max(1.0f, static_cast<float>(model.track.duration_ms) / 1000.0f);
         position_ = static_cast<float>(model.position_ms) / 1000.0f;
         playing_ = !model.paused;
@@ -360,7 +375,12 @@ class NowPlaying final : public Screen
         list.push_opacity(alpha);
         list.shadow({r.x, r.y + 28, r.w, r.h}, kArtRadius, 50, Color::rgb(0x000000, 0.5f));
         const Color tint = gfx::mix(Color::rgb(0xb9bcc8), kWhite, live);
-        draw_generated_cover(list, r, track, tint);
+        // The generated cover stays underneath while the real one fades in.
+        const float real = track.art ? (&track == &current_ ? art_in_.value : 1.0f) : 0.0f;
+        if (real < 0.99f)
+            draw_generated_cover(list, r, track, tint);
+        if (real > 0.01f)
+            list.image(track.art, r, gfx::kFullUv, tint.with_alpha(real), kArtRadius);
         list.bordered_rect(r, kArtRadius, kClear, 2, kWhite.with_alpha(0.16f));
         list.pop_opacity();
     }
@@ -626,6 +646,7 @@ class NowPlaying final : public Screen
     std::array<float, kBars> levels_{};
     std::array<float, kBars> peaks_{};
     float energy_ = 0.0f;
+    tween::Spring art_in_; // the real cover fading in over the generated one
     tween::Spring glow_;
     tween::Spring shown_;
     tween::Spring play_;

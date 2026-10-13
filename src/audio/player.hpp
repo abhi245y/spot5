@@ -33,6 +33,7 @@ struct NowPlaying
     std::string title;
     std::string artist;
     std::string album;
+    std::string image_url; // the album cover (LARGE, 640 px)
     std::uint32_t duration_ms = 0;
     std::uint32_t position_ms = 0; // of the audio being heard, not decoded
     bool paused = true;

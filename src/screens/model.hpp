@@ -9,6 +9,8 @@
 #include <cstdint>
 #include <string>
 
+#include "screens/style.hpp"
+
 namespace screens
 {
 
@@ -38,6 +40,10 @@ struct Track
     std::string artist;
     std::string album;
     std::uint32_t duration_ms = 0;
+    std::string image_url;
+    std::uint32_t art = 0;       // cover texture (RGBA, top row first); 0 until loaded
+    bool has_palette = false;    // palette below comes from the cover
+    style::AlbumPalette palette; // valid when has_palette
 };
 
 struct Model

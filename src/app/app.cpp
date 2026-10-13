@@ -7,6 +7,7 @@
 
 #include <chrono>
 #include <cstdint>
+#include <deque>
 #include <span>
 #include <string>
 #include <vector>
@@ -22,6 +23,7 @@
 #include "platform/ps5/pad.hpp"
 #include "platform/ps5/system.hpp"
 #include "screens/shell.hpp"
+#include "spotify/cover.hpp"
 #include "ui/fonts.hpp"
 
 namespace app
@@ -98,11 +100,67 @@ screens::Model model_from(const Status &status)
     model.message = status.message;
     const NowPlaying &now = status.now_playing;
     model.has_track = !now.title.empty();
-    model.track = {now.track_id, now.title, now.artist, now.album, now.duration_ms};
+    model.track.id = now.track_id;
+    model.track.title = now.title;
+    model.track.artist = now.artist;
+    model.track.album = now.album;
+    model.track.duration_ms = now.duration_ms;
+    model.track.image_url = now.image_url;
     model.paused = now.paused;
     model.position_ms = std::min(now.position_ms, now.duration_ms);
     return model;
 }
+
+// Covers as textures. The last few stay alive: a cover that is sliding out
+// during a track change is still being drawn.
+class Covers
+{
+  public:
+    explicit Covers(gfx::Renderer &renderer) : renderer_(renderer) {}
+    ~Covers()
+    {
+        for (const Entry &e : textures_)
+            glDeleteTextures(1, &e.texture);
+    }
+
+    // Fills in the model's cover once it is loaded; asks for it otherwise.
+    void apply(screens::Track &track)
+    {
+        loader_.request(track.image_url);
+        if (std::optional<spotify::Cover> cover = loader_.take())
+        {
+            Entry e{cover->url,
+                    renderer_.batch().create_texture(cover->width, cover->height, cover->rgba.data()),
+                    cover->palette};
+            textures_.push_back(e);
+            if (textures_.size() > 3)
+            {
+                glDeleteTextures(1, &textures_.front().texture);
+                textures_.pop_front();
+            }
+        }
+        for (const Entry &e : textures_)
+        {
+            if (!track.image_url.empty() && e.url == track.image_url)
+            {
+                track.art = e.texture;
+                track.palette = e.palette;
+                track.has_palette = true;
+            }
+        }
+    }
+
+  private:
+    struct Entry
+    {
+        std::string url;
+        std::uint32_t texture;
+        screens::style::AlbumPalette palette;
+    };
+    gfx::Renderer &renderer_;
+    spotify::CoverLoader loader_;
+    std::deque<Entry> textures_;
+};
 
 } // namespace
 
@@ -136,6 +194,7 @@ void App::run()
         sys::park();
     }
 
+    Covers covers(renderer);
     ps5::Pad pad;
     pad.open();
     InputTracker tracker;
@@ -160,7 +219,9 @@ void App::run()
         const InputFrame input =
             tracker.update(std::span<const PadSample>(samples, count), static_cast<std::uint64_t>(now));
 
-        const screens::Model model = model_from(controller.status());
+        screens::Model model = model_from(controller.status());
+        if (model.has_track)
+            covers.apply(model.track);
         ui::Feedback feedback;
         std::vector<screens::Command> commands;
         shell.update(model, input, dt, feedback, commands);

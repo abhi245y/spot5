@@ -77,4 +77,61 @@ inline AlbumPalette album_palette(std::string_view name)
     return {hsv(hue, 0.65f, 0.16f), hsv(hue + 0.04f, 0.6f, 0.42f), hsv(hue + 0.08f, 0.55f, 0.95f)};
 }
 
+// The cover's own colours, at the same brightness levels as album_palette()
+// so text stays readable on any cover: dark and mid from the average hue,
+// the accent from the most vivid sample. Grey covers stay grey.
+inline AlbumPalette palette_from_pixels(const std::uint8_t *rgba, int width, int height)
+{
+    constexpr int kGrid = 24;
+    float sum_r = 0, sum_g = 0, sum_b = 0;
+    float best = -1.0f, best_h = 0.0f, best_s = 0.0f;
+    for (int gy = 0; gy < kGrid; gy++)
+    {
+        for (int gx = 0; gx < kGrid; gx++)
+        {
+            const int x = (gx * 2 + 1) * width / (kGrid * 2);
+            const int y = (gy * 2 + 1) * height / (kGrid * 2);
+            const std::uint8_t *p = rgba + (static_cast<std::size_t>(y) * width + x) * 4;
+            const float r = p[0] / 255.0f, g = p[1] / 255.0f, b = p[2] / 255.0f;
+            sum_r += r, sum_g += g, sum_b += b;
+            const float hi = std::max({r, g, b}), lo = std::min({r, g, b});
+            const float sat = hi > 0.0f ? (hi - lo) / hi : 0.0f;
+            const float score = sat * (0.35f + hi); // vivid and not too dark
+            if (score > best)
+            {
+                best = score;
+                best_s = sat;
+                float h = 0.0f;
+                if (hi > lo)
+                {
+                    if (hi == r)
+                        h = (g - b) / (hi - lo) / 6.0f;
+                    else if (hi == g)
+                        h = (2.0f + (b - r) / (hi - lo)) / 6.0f;
+                    else
+                        h = (4.0f + (r - g) / (hi - lo)) / 6.0f;
+                }
+                best_h = h < 0.0f ? h + 1.0f : h;
+            }
+        }
+    }
+    const float n = static_cast<float>(kGrid * kGrid);
+    const float r = sum_r / n, g = sum_g / n, b = sum_b / n;
+    const float hi = std::max({r, g, b}), lo = std::min({r, g, b});
+    const float avg_s = hi > 0.0f ? (hi - lo) / hi : 0.0f;
+    float avg_h = 0.0f;
+    if (hi > lo)
+    {
+        if (hi == r)
+            avg_h = (g - b) / (hi - lo) / 6.0f;
+        else if (hi == g)
+            avg_h = (2.0f + (b - r) / (hi - lo)) / 6.0f;
+        else
+            avg_h = (4.0f + (r - g) / (hi - lo)) / 6.0f;
+    }
+    const float base_s = std::min(avg_s * 1.3f, 0.7f);
+    return {hsv(avg_h, base_s, 0.16f), hsv(avg_h, base_s, 0.42f),
+            hsv(best_h, std::clamp(best_s, 0.0f, 0.75f), 0.95f)};
+}
+
 } // namespace screens::style

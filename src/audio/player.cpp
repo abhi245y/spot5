@@ -77,6 +77,7 @@ Player::Player(std::shared_ptr<cspot::SpircHandler> handler) : handler_(std::mov
             now_playing_.title = info.name;
             now_playing_.artist = info.artist;
             now_playing_.album = info.album;
+            now_playing_.image_url = info.imageUrl;
             now_playing_.duration_ms = info.duration;
             break;
         }
