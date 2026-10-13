@@ -287,6 +287,16 @@ class CardArt
         return {found->second.texture, found->second.palette};
     }
 
+    // Forgets every cover (Clear cache): they load again when drawn. Safe
+    // between frames: the last frame was presented, the next is not drawn yet.
+    void clear()
+    {
+        for (const auto &[url, entry] : entries_)
+            glDeleteTextures(1, &entry.texture);
+        entries_.clear();
+        bytes_ = 0;
+    }
+
     // Asks for every cover of a page (the launch screen waits for them).
     // Returns how many of `urls` are loaded.
     std::size_t preload(const std::vector<std::string> &urls)
@@ -416,6 +426,11 @@ void App::run()
         {
             if (command == screens::Command::quit)
                 quit(display);
+            if (command == screens::Command::clear_cache)
+            {
+                card_art.clear();
+                spotify::clear_cover_cache(paths::kCovers);
+            }
             controller.send(command);
         }
         for (const screens::Request &request : context.requests)

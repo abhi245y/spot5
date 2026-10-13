@@ -3,6 +3,7 @@
 
 #include "spotify/cover.hpp"
 
+#include <dirent.h>
 #include <sys/stat.h>
 
 #include <algorithm>
@@ -35,6 +36,10 @@ int max_decode_side()
 }
 constexpr int kBigPixels = 1000 * 1000;
 std::mutex g_big_decode;
+// Every saved cover's name goes into index.txt (listing a directory under
+// /app0 returns nothing on the console, so clearing needs its own list).
+std::mutex g_index;
+constexpr const char *kIndex = "index.txt";
 
 std::int64_t now_ms()
 {
@@ -84,6 +89,31 @@ void take_pixels(const std::uint8_t *pixels, int width, int height, int max_side
 }
 
 } // namespace
+
+int clear_cover_cache(const std::string &dir)
+{
+    std::scoped_lock guard(g_index);
+    int removed = 0;
+    const std::string index = dir + "/" + kIndex;
+    if (FILE *list = std::fopen(index.c_str(), "r"))
+    {
+        char name[64];
+        while (std::fscanf(list, "%63s", name) == 1)
+            removed += std::remove((dir + "/" + name).c_str()) == 0;
+        std::fclose(list);
+    }
+    // Covers saved before there was an index, where listing works.
+    if (DIR *folder = opendir(dir.c_str()))
+    {
+        while (const dirent *entry = readdir(folder))
+            if (entry->d_name[0] != '.' && std::string(entry->d_name) != kIndex)
+                removed += std::remove((dir + "/" + entry->d_name).c_str()) == 0;
+        closedir(folder);
+    }
+    std::remove(index.c_str());
+    hui::sys::log("[APP] cache: %d covers deleted", removed);
+    return removed;
+}
 
 CoverLoader::CoverLoader(std::size_t max_queued, int workers, std::string cache_dir)
     : max_queued_(std::max<std::size_t>(1, max_queued)), cache_dir_(std::move(cache_dir))
@@ -198,8 +228,16 @@ std::vector<std::uint8_t> CoverLoader::fetch(const std::string &url)
         // two loaders may fetch the same cover at once.
         const std::string temporary =
             path + ".tmp" + std::to_string(reinterpret_cast<std::uintptr_t>(pthread_self()));
-        if (app::write_file(temporary, std::string(bytes.begin(), bytes.end())))
-            std::rename(temporary.c_str(), path.c_str());
+        if (app::write_file(temporary, std::string(bytes.begin(), bytes.end())) &&
+            std::rename(temporary.c_str(), path.c_str()) == 0)
+        {
+            std::scoped_lock guard(g_index);
+            if (FILE *index = std::fopen((cache_dir_ + "/" + kIndex).c_str(), "a"))
+            {
+                std::fprintf(index, "%s\n", cache_name(url).c_str());
+                std::fclose(index);
+            }
+        }
     }
     return bytes;
 }

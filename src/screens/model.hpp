@@ -190,6 +190,7 @@ enum class Command : std::uint8_t
     quit,
     forget_login, // delete the saved login (Control Room > Account)
     refresh_home, // fetch Home again (R3); the app limits how often
+    clear_cache,  // delete saved covers and Home (Control Room > About), then fetch again
 };
 
 } // namespace screens

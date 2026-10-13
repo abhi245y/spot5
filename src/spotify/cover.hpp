@@ -39,6 +39,10 @@ struct Cover
     screens::style::AlbumPalette palette;
 };
 
+// Deletes every saved cover in `dir` (those its index lists, and any the
+// directory listing shows). Returns how many files went.
+int clear_cover_cache(const std::string &dir);
+
 class CoverLoader
 {
   public:

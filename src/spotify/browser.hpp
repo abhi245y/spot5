@@ -55,8 +55,9 @@ class Browser
     Browser(const Browser &) = delete;
     Browser &operator=(const Browser &) = delete;
 
-    // Fetch Home again (the caller decides how often).
-    void refresh();
+    // Fetch Home again (the caller decides how often). `forget`: drop the
+    // metadata kept in memory first, so every title and cover is fetched anew.
+    void refresh(bool forget = false);
     // Resolve a Home card into tracks (to play them).
     void resolve(const screens::PlayRequest &request);
     // Resolve a card's tracks for its page (take_opened()).
@@ -78,6 +79,7 @@ class Browser
     struct Job
     {
         enum class Kind { refresh, resolve, open, describe } kind = Kind::refresh;
+        bool forget = false;                // refresh
         screens::PlayRequest play;          // resolve
         std::string uri;                    // open
         std::vector<std::string> uris;      // describe

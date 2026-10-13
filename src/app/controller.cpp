@@ -199,6 +199,18 @@ void Controller::handle_commands()
             if (state == State::Ready && now_ms() - home_asked_ms_ >= kManualRefreshGapMs)
                 refresh_home("asked");
             break;
+        case Command::clear_cache:
+            // The app clears covers itself; here the saved Home and what was
+            // learned about tracks, then a fresh Home.
+            std::remove(paths::kHome.c_str());
+            details_.clear();
+            described_.clear();
+            if (state == State::Ready)
+            {
+                home_asked_ms_ = now_ms();
+                session_->browser().refresh(true);
+            }
+            break;
         case Command::quit:
             break; // the app quits itself
         }

@@ -58,7 +58,7 @@ constexpr float kRowsY = kPanel.y + 104.0f;
 constexpr float kRowH = 72.0f;
 constexpr float kRowPitch = 80.0f;
 constexpr float kFooterY = kPanel.y + kPanel.h - 84.0f;
-constexpr float kTileH = 172.0f;
+constexpr float kTileH = 150.0f; // About: two lines of tiles above two action rows
 constexpr float kTileGap = 16.0f;
 
 constexpr float kSliderW = 440.0f;
@@ -85,6 +85,7 @@ enum class Field : std::uint8_t
     forget,
     reduce_motion,
     resolution,
+    clear_cache,
     reset,
     quit,
     count,
@@ -141,6 +142,8 @@ constexpr Row kDisplayRows[] = {
      Field::reduce_motion},
 };
 constexpr Row kAboutRows[] = {
+    {"Clear cache", "Deletes saved covers and the saved Home; they download again as you browse.",
+     Kind::action, Field::clear_cache},
     {"Reset all settings", "Returns every option on these pages to its default value.",
      Kind::action, Field::reset},
 };
@@ -156,7 +159,7 @@ constexpr Category kCategories[] = {
     {"Device", "How this console shows up in Spotify.", kDeviceRows, 1},
     {"Account", "Who is signed in, and how to forget it.", kAccountRows, 2},
     {"Display", "How sharp and how calm the interface is.", kDisplayRows, 2},
-    {"About", "What this app is built from, and the way back to its defaults.", kAboutRows, 1},
+    {"About", "What this app is built from, its saved data, and the way back to its defaults.", kAboutRows, 2},
     {"Quit", "Close the app.", kQuitRows, 1},
 };
 constexpr int kCategoryCount = 6;
@@ -189,6 +192,7 @@ enum class Ask : std::uint8_t
 {
     none,
     forget,
+    clear,
     reset,
     quit,
 };
@@ -692,9 +696,10 @@ class ControlRoom final : public Screen
             break;
         }
         case Kind::action:
-            ask_ = row.field == Field::forget  ? Ask::forget
-                   : row.field == Field::reset ? Ask::reset
-                                               : Ask::quit;
+            ask_ = row.field == Field::forget        ? Ask::forget
+                   : row.field == Field::clear_cache ? Ask::clear
+                   : row.field == Field::reset       ? Ask::reset
+                                                     : Ask::quit;
             last_ask_ = ask_;
             choice_ = 0; // the safe choice
             choice_position_.snap(0.0f);
@@ -764,6 +769,10 @@ class ControlRoom final : public Screen
             case Ask::forget:
                 commands.push_back(Command::forget_login);
                 close_ = true; // back to the screens: the launch screen explains
+                break;
+            case Ask::clear:
+                commands.push_back(Command::clear_cache);
+                mark_changed("Cache cleared");
                 break;
             case Ask::reset:
                 context_.settings = Settings{};
@@ -1297,7 +1306,7 @@ class ControlRoom final : public Screen
                                       "GPL-3.0"};
         const char *notes[] = {version.c_str(), "Spotify Connect, login5, verified TLS",
                                "On your local network",
-                               "mbedTLS: Apache-2.0  \xC2\xB7  fonts: OFL"};
+                               "mbedTLS: Apache-2.0  \xC2\xB7  libwebp: BSD  \xC2\xB7  fonts: OFL"};
         const Rect area = row_rect(0, 0);
         const float w = (area.w - kTileGap) * 0.5f;
         for (int i = 0; i < 4; ++i)
@@ -1306,13 +1315,13 @@ class ControlRoom final : public Screen
                             kRowsY + as_float(i / 2) * (kTileH + kTileGap) + dy, w, kTileH};
             list.bordered_rect(tile, kRadius, kDeep.with_alpha(0.32f), 1.5f,
                                kInk.with_alpha(0.06f));
-            ui::text(list, fonts.semibold, labels[i], tile.x + kRowPad, tile.y + 46, 16,
+            ui::text(list, fonts.semibold, labels[i], tile.x + kRowPad, tile.y + 40, 16,
                      kInk.with_alpha(0.5f), gfx::Align::left, 3.5f);
             ui::text(list, i == 2 ? fonts.mono : fonts.semibold,
                      fonts.semibold.font->fit(values[i], 34, w - 2 * kRowPad), tile.x + kRowPad,
-                     tile.y + 98, 34, kInk);
+                     tile.y + 87, 34, kInk);
             ui::text(list, fonts.regular, fonts.regular.font->fit(notes[i], 22, w - 2 * kRowPad),
-                     tile.x + kRowPad, tile.y + 138, 22, kInk.with_alpha(0.6f));
+                     tile.x + kRowPad, tile.y + 124, 22, kInk.with_alpha(0.6f));
         }
     }
 
@@ -1468,18 +1477,25 @@ class ControlRoom final : public Screen
         // What is being asked stays readable while the dialog leaves.
         const Ask shown = ask_ != Ask::none ? ask_ : last_ask_;
         const char *title = shown == Ask::forget ? "Forget this login?"
+                            : shown == Ask::clear ? "Clear the cache?"
                             : shown == Ask::reset ? "Reset all settings?"
                                                   : "Quit Spotify?";
         const char *body =
             shown == Ask::forget
                 ? "The saved login is deleted from this console. To play here again you will need "
                   "to pair it with your phone."
+            : shown == Ask::clear
+                ? "Saved covers and the saved Home are deleted. Your login and settings stay; "
+                  "everything downloads again as you browse."
             : shown == Ask::reset
                 ? "Quality, volume, the device name and reduce motion go back to how the app "
                   "first started."
                 : "The music stops and the app closes. You can also close it any time with the PS "
                   "button.";
-        const char *yes = shown == Ask::forget ? "Forget" : shown == Ask::reset ? "Reset" : "Quit";
+        const char *yes = shown == Ask::forget  ? "Forget"
+                          : shown == Ask::clear ? "Clear"
+                          : shown == Ask::reset ? "Reset"
+                                                : "Quit";
         list.push_opacity(tween::clamp01(t * 1.5f));
         list.push_transform(1.0f - 0.06f * (1.0f - t) * travel(), 960, 540, 0,
                             26.0f * (1.0f - t) * travel());

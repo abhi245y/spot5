@@ -104,10 +104,11 @@ Browser::~Browser()
         pthread_join(thread_, nullptr);
 }
 
-void Browser::refresh()
+void Browser::refresh(bool forget)
 {
     Job job;
     job.kind = Job::Kind::refresh;
+    job.forget = forget;
     std::scoped_lock guard(lock_);
     jobs_.push_back(std::move(job));
     wake_.notify_all();
@@ -205,6 +206,11 @@ void Browser::run()
             switch (job.kind)
             {
             case Job::Kind::refresh:
+                if (job.forget)
+                {
+                    sections_.clear();
+                    entities_.clear();
+                }
                 fetch_home();
                 break;
             case Job::Kind::resolve:
