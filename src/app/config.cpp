@@ -43,6 +43,7 @@ bool load_config(Config &config, std::string &error)
         return false;
     }
     config.client_id = json["client_id"].get<std::string>();
+    config.timezone = json.value("timezone", config.timezone);
     return true;
 }
 

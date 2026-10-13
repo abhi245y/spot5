@@ -3,6 +3,7 @@
 
 #include "spotify/cover.hpp"
 
+#include <algorithm>
 #include <exception>
 
 #include "HTTPClient.h"
@@ -12,7 +13,7 @@
 namespace spotify
 {
 
-CoverLoader::CoverLoader()
+CoverLoader::CoverLoader(std::size_t max_queued) : max_queued_(std::max<std::size_t>(1, max_queued))
 {
     pthread_attr_t attr;
     pthread_attr_init(&attr);
@@ -39,19 +40,32 @@ void CoverLoader::request(const std::string &url)
     if (url.empty())
         return;
     std::scoped_lock guard(lock_);
-    if (url == last_requested_)
+    if (url == last_requested_ || url == in_flight_ ||
+        std::find(wanted_.begin(), wanted_.end(), url) != wanted_.end() ||
+        std::find(failed_.begin(), failed_.end(), url) != failed_.end())
         return;
     last_requested_ = url;
-    wanted_ = url;
+    wanted_.push_back(url);
+    if (wanted_.size() > max_queued_)
+        wanted_.pop_front(); // superseded
     wake_.notify_all();
 }
 
 std::optional<Cover> CoverLoader::take()
 {
     std::scoped_lock guard(lock_);
-    std::optional<Cover> cover;
-    cover.swap(done_);
+    if (done_.empty())
+        return std::nullopt;
+    std::optional<Cover> cover(std::move(done_.front()));
+    done_.pop_front();
     return cover;
+}
+
+void CoverLoader::forget(const std::string &url)
+{
+    std::scoped_lock guard(lock_);
+    in_flight_.clear();
+    failed_.push_back(url);
 }
 
 void *CoverLoader::entry(void *self)
@@ -70,7 +84,9 @@ void CoverLoader::run()
             wake_.wait(guard, [&] { return stop_ || !wanted_.empty(); });
             if (stop_)
                 return;
-            url.swap(wanted_);
+            url = std::move(wanted_.front());
+            wanted_.pop_front();
+            in_flight_ = url;
         }
 
         std::vector<std::uint8_t> bytes;
@@ -81,6 +97,7 @@ void CoverLoader::run()
         catch (const std::exception &e)
         {
             hui::sys::log("[APP] cover download failed: %s", e.what());
+            forget(url);
             continue;
         }
 
@@ -91,6 +108,7 @@ void CoverLoader::run()
         {
             hui::sys::log("[APP] cover not decodable (%zu bytes): %s", bytes.size(),
                           stbi_failure_reason());
+            forget(url);
             continue;
         }
         Cover cover;
@@ -100,12 +118,10 @@ void CoverLoader::run()
         cover.rgba.assign(pixels, pixels + static_cast<std::size_t>(width) * height * 4);
         stbi_image_free(pixels);
         cover.palette = screens::style::palette_from_pixels(cover.rgba.data(), width, height);
-        hui::sys::log("[APP] cover %dx%d (%zu KB)", width, height, bytes.size() / 1024);
 
         std::scoped_lock guard(lock_);
-        // A newer request supersedes this one; its cover will follow.
-        if (wanted_.empty())
-            done_ = std::move(cover);
+        in_flight_.clear();
+        done_.push_back(std::move(cover));
     }
 }
 

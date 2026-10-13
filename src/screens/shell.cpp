@@ -62,7 +62,7 @@ Shell::Id Shell::wanted(const Model &model) const
         return Id::launch; // let the loader finish what it shows
     if (model.connection == Connection::connecting)
         return Id::launch;
-    return model.has_track ? Id::playing : Id::home;
+    return model.has_track && playing_open_ ? Id::playing : Id::home;
 }
 
 void Shell::go(Id next, Move move, float seconds)
@@ -85,6 +85,20 @@ void Shell::update(const Model &model, const InputFrame &input, float dt, ui::Fe
 {
     clock_ += dt;
     transition_.update(dt);
+
+    // Home is the hub: Triangle opens Now Playing, Circle comes back.
+    if (!menu_open_ && current_ == Id::home && model.has_track && input.is_pressed(Action::north))
+    {
+        playing_open_ = true;
+        feedback.play(audio::Cue::open);
+    }
+    else if (!menu_open_ && current_ == Id::playing && input.is_pressed(Action::back))
+    {
+        playing_open_ = false;
+        feedback.play(audio::Cue::back);
+    }
+    if (!model.has_track)
+        playing_open_ = false;
 
     const Id next = wanted(model);
     if (next != current_)

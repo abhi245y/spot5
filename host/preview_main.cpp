@@ -23,7 +23,10 @@
 #include <string>
 #include <vector>
 
+#include <map>
+
 #include "core/save_file.hpp"
+#include "spotify/home.hpp"
 #include "gfx/canvas.hpp"
 #include "gfx/gl_program.hpp"
 #include "gfx/renderer.hpp"
@@ -116,6 +119,63 @@ void with_cover(Model &m, int which)
     m.track.has_palette = true;
 }
 
+// Home from real replies in tests/home-fixture (git-ignored: personal data):
+// home.pb + traits_*.pb as the console fetches them, covers/<hash>.jpg.
+std::shared_ptr<const screens::HomePage> g_home;
+std::string g_fixture;
+gfx::Renderer *g_renderer = nullptr;
+
+std::shared_ptr<const screens::HomePage> load_home_fixture(const std::string &dir)
+{
+    std::string home;
+    if (!save::read_file(dir + "/home.pb", &home))
+        return nullptr;
+    spotify::home::Entities entities;
+    for (int i = 0;; ++i)
+    {
+        std::string traits;
+        if (!save::read_file(dir + "/traits_" + std::to_string(i) + ".pb", &traits))
+            break;
+        spotify::home::parse_traits(traits, entities, 1);
+    }
+    return std::make_shared<screens::HomePage>(
+        spotify::home::build_page(spotify::home::parse_home(home), entities));
+}
+
+std::string cover_file(const std::string &url)
+{
+    return g_fixture + "/covers/" + std::to_string(std::hash<std::string>{}(url)) + ".jpg";
+}
+
+// Covers by URL: the fixture's file if downloaded, else a test cover. URLs
+// with no file are listed in missing-covers.txt (tools/preview.sh fetches them).
+screens::Art preview_art(const std::string &url)
+{
+    static std::map<std::string, screens::Art> loaded;
+    if (auto found = loaded.find(url); found != loaded.end())
+        return found->second;
+    screens::Art art{g_covers[std::hash<std::string>{}(url) % 2].texture,
+                     g_covers[std::hash<std::string>{}(url) % 2].palette};
+    std::string data;
+    if (save::read_file(cover_file(url), &data))
+    {
+        int w = 0, h = 0, n = 0;
+        if (std::uint8_t *px = stbi_load_from_memory(reinterpret_cast<const std::uint8_t *>(data.data()),
+                                                     static_cast<int>(data.size()), &w, &h, &n, 4))
+        {
+            art = {g_renderer->batch().create_texture(w, h, px), screens::style::palette_from_pixels(px, w, h)};
+            stbi_image_free(px);
+        }
+    }
+    else if (FILE *list = std::fopen((g_fixture + "/missing-covers.txt").c_str(), "a"))
+    {
+        std::fprintf(list, "%s %s\n", url.c_str(), cover_file(url).c_str());
+        std::fclose(list);
+    }
+    loaded[url] = art;
+    return art;
+}
+
 const std::vector<Beat> &script()
 {
     static const std::vector<Beat> beats = {
@@ -157,8 +217,26 @@ const std::vector<Beat> &script()
         {0.25f, nullptr, 0, "05d-handover"},
         {0.25f, nullptr, 0, "05e-handover"},
         {2.0f, nullptr, 0, "06-home"},
-        {0.3f, [](Model &m) { playing(m, "a", "Aashiqana", "Chaar Diwaari", "Aashiqana", 47000, 214000); },
-         0, "07-home-to-playing"},
+        {0.6f, nullptr, 0, "06a-home-tile", Direction::right},
+        {0.4f, nullptr, 0, nullptr, Direction::down},           // grid line 2
+        {0.6f, nullptr, 0, nullptr, Direction::down},           // first shelf
+        {0.3f, nullptr, 0, nullptr, Direction::right},
+        {0.9f, nullptr, 0, "06b-home-shelf", Direction::right},
+        {0.3f, nullptr, 0, nullptr, Direction::down},
+        {0.3f, nullptr, 0, nullptr, Direction::down},
+        {0.3f, nullptr, 0, nullptr, Direction::right},
+        {0.3f, nullptr, 0, nullptr, Direction::right},
+        {0.3f, nullptr, 0, nullptr, Direction::right},
+        {0.3f, nullptr, 0, nullptr, Direction::right},
+        {0.9f, nullptr, 0, "06c-home-scrolled", Direction::right},
+        {0.9f, nullptr, action_bit(Action::confirm), "06d-details"},
+        {0.4f, nullptr, 0, nullptr, Direction::down},           // Shuffle
+        {0.6f, nullptr, action_bit(Action::back), "06e-details-closing"},
+        {0.6f, [](Model &m) { m.notice = "This can't be played here yet"; ++m.notice_id; }, 0, "06f-notice"},
+        {3.5f, [](Model &m) { playing(m, "a", "Aashiqana", "Chaar Diwaari", "Aashiqana", 47000, 214000); },
+         0, nullptr},
+        {0.8f, nullptr, 0, "06g-home-mini-player"},
+        {0.3f, nullptr, action_bit(Action::north), "07-home-to-playing"},
         {0.4f, nullptr, 0, "08a-cover-pending"},
         {0.35f, [](Model &m) { with_cover(m, 0); }, 0, "08b-cover-fading-in"},
         {2.5f, nullptr, 0, "08-playing"},
@@ -253,8 +331,15 @@ int main(int argc, char **argv)
 
     screens::Settings settings;
     screens::Context context{fonts, settings};
+    context.art = preview_art;
+    g_renderer = &renderer;
+    g_fixture = assets + "/../tests/home-fixture";
+    std::remove((g_fixture + "/missing-covers.txt").c_str());
+    g_home = load_home_fixture(g_fixture);
+    std::printf("home fixture: %s\n", g_home ? "loaded" : "none (tests/home-fixture/home.pb)");
     screens::Shell shell(context);
     Model model;
+    model.home = g_home;
     model.username = "abhi245y";
     model.about = {"01.000.000", "ps5@555ea3c", "192.168.1.2"};
     std::vector<unsigned char> pixels(static_cast<std::size_t>(kWidth) * kHeight * 4);

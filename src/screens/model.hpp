@@ -7,7 +7,9 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
 #include <string>
+#include <vector>
 
 #include "screens/style.hpp"
 
@@ -47,6 +49,38 @@ struct Track
     style::AlbumPalette palette; // valid when has_palette
 };
 
+// One thing on Home: a playlist, album, artist, show...
+struct Card
+{
+    std::string uri;
+    std::string title;
+    std::string subtitle;    // "Playlist · Spotify", "Artist"...
+    std::string description; // longer text for the details sheet; may be empty
+    std::string image;       // ~300 px cover, for cards
+    std::string image_large; // ~640 px cover, for the hero and details
+    bool round = false;      // artists are drawn in a circle, as on the phone
+};
+
+struct Shelf
+{
+    std::string title;
+    bool shortcuts = false; // the phone's 2x4 grid of small tiles at the top
+    std::vector<Card> cards;
+};
+
+// The personalised Home page, as Spotify's own apps get it (casita).
+struct HomePage
+{
+    std::vector<Shelf> shelves;
+};
+
+// What a screen wants played (Context::play): a playlist/album/... on Home.
+struct PlayRequest
+{
+    std::string uri;
+    bool shuffle = false;
+};
+
 // What the user can change in Control Room. The app loads and saves it
 // (settings.json) and applies it; the screens edit it live through
 // Context::settings and raise Context::settings_changed.
@@ -76,7 +110,12 @@ struct Model
     std::string username; // the signed-in Spotify account
     About about;
 
-    bool has_track = false; // the phone picked this device and sent a track
+    std::shared_ptr<const HomePage> home; // null until the first load (or the cache)
+    bool home_loading = false;            // a fetch is running
+    std::string notice;                   // a short message, e.g. "This can't be played here yet"
+    std::uint32_t notice_id = 0;          // changes with each new notice: show it once
+
+    bool has_track = false; // a track is loaded (from the phone or from Home)
     Track track;
     bool paused = true;
     std::uint32_t position_ms = 0;
@@ -90,6 +129,7 @@ enum class Command : std::uint8_t
     previous,
     quit,
     forget_login, // delete the saved login (Control Room > Account)
+    refresh_home, // fetch Home again (R3); the app limits how often
 };
 
 } // namespace screens

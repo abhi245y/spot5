@@ -59,6 +59,7 @@ class Shell
     Context &context_;
     std::unique_ptr<Screen> launch_, home_, playing_, menu_;
     bool menu_open_ = false;
+    bool playing_open_ = false; // Triangle on Home opens Now Playing; Circle closes it
     Id current_ = Id::launch;
     Id previous_ = Id::launch;
     Move move_ = Move::none;

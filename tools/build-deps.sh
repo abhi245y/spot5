@@ -28,6 +28,14 @@ grep -q "login5.spotify.com" "$root/../cspot/cspot/src/AccessKeyFetcher.cpp" || 
     echo "cspot checkout lacks login5 (feat/login5-token); check out the ps5/feature branch" >&2
     exit 2
 }
+grep -q "appendToContext" "$root/../cspot/cspot/src/SpircHandler.cpp" || {
+    echo "cspot checkout lacks local playback (feat/local-load)" >&2
+    exit 2
+}
+grep -q "statusCode" "$root/../cspot/cspot/bell/main/io/include/HTTPClient.h" || {
+    echo "bell checkout lacks HTTPClient::statusCode (bell ps5 branch)" >&2
+    exit 2
+}
 grep -q "hasAccept" "$root/../cspot/cspot/bell/main/io/HTTPClient.cpp" || {
     echo "bell checkout lacks the Accept header fix (fix/accept-header)" >&2
     exit 2

@@ -12,6 +12,7 @@
 #include <chrono>
 #include <cstdint>
 #include <deque>
+#include <unordered_map>
 #include <span>
 #include <string>
 #include <vector>
@@ -149,6 +150,10 @@ screens::Model model_from(const Status &status)
     model.step = status.step;
     model.message = status.message;
     model.username = status.username;
+    model.home = status.home;
+    model.home_loading = status.home_loading;
+    model.notice = status.notice;
+    model.notice_id = status.notice_id;
     const NowPlaying &now = status.now_playing;
     model.has_track = !now.title.empty();
     model.track.id = now.track_id;
@@ -213,6 +218,77 @@ class Covers
     std::deque<Entry> textures_;
 };
 
+// Home's covers as textures, by URL. Least recently drawn ones go first once
+// there are too many; a texture drawn in the last frames is never deleted
+// (the renderer still holds this frame's draw lists).
+class CardArt
+{
+  public:
+    explicit CardArt(gfx::Renderer &renderer) : renderer_(renderer) {}
+    ~CardArt()
+    {
+        for (const auto &[url, entry] : entries_)
+            glDeleteTextures(1, &entry.texture);
+    }
+
+    // Once per frame, before the screens draw.
+    void pump()
+    {
+        ++frame_;
+        // A few uploads per frame keep scrolling smooth.
+        for (int i = 0; i < 4; ++i)
+        {
+            std::optional<spotify::Cover> cover = loader_.take();
+            if (!cover)
+                break;
+            Entry &entry = entries_[cover->url];
+            if (entry.texture)
+                glDeleteTextures(1, &entry.texture);
+            entry.texture = renderer_.batch().create_texture(cover->width, cover->height, cover->rgba.data());
+            entry.palette = cover->palette;
+            entry.used = frame_;
+        }
+        while (entries_.size() > kMaxTextures)
+        {
+            auto oldest = entries_.end();
+            for (auto it = entries_.begin(); it != entries_.end(); ++it)
+                if (it->second.used + 2 < frame_ && (oldest == entries_.end() || it->second.used < oldest->second.used))
+                    oldest = it;
+            if (oldest == entries_.end())
+                break; // everything is on screen
+            glDeleteTextures(1, &oldest->second.texture);
+            entries_.erase(oldest);
+        }
+    }
+
+    screens::Art get(const std::string &url)
+    {
+        const auto found = entries_.find(url);
+        if (found == entries_.end())
+        {
+            loader_.request(url);
+            return {};
+        }
+        found->second.used = frame_;
+        return {found->second.texture, found->second.palette};
+    }
+
+  private:
+    // ponytail: 96 covers at 300 px is ~35 MB of textures; a shelf of 640 px
+    // heroes would be more. Lower it if memory gets tight.
+    static constexpr std::size_t kMaxTextures = 96;
+    struct Entry
+    {
+        std::uint32_t texture = 0;
+        screens::style::AlbumPalette palette;
+        std::uint64_t used = 0;
+    };
+    gfx::Renderer &renderer_;
+    spotify::CoverLoader loader_{12}; // covers scrolled past are dropped
+    std::unordered_map<std::string, Entry> entries_;
+    std::uint64_t frame_ = 0;
+};
+
 } // namespace
 
 void App::run()
@@ -251,7 +327,9 @@ void App::run()
     ps5::Pad pad;
     pad.open();
     InputTracker tracker;
+    CardArt card_art(renderer);
     screens::Context context{fonts, settings};
+    context.art = [&card_art](const std::string &url) { return card_art.get(url); };
     const screens::About about = about_facts();
     std::int64_t save_at = 0; // when to write settings.json; 0: nothing pending
     screens::Shell shell(context);
@@ -279,6 +357,7 @@ void App::run()
         model.about = about;
         if (model.has_track)
             covers.apply(model.track);
+        card_art.pump();
         ui::Feedback feedback;
         std::vector<screens::Command> commands;
         shell.update(model, input, dt, feedback, commands);
@@ -287,6 +366,11 @@ void App::run()
             if (command == screens::Command::quit)
                 quit(display);
             controller.send(command);
+        }
+        if (context.play)
+        {
+            controller.play(*context.play);
+            context.play.reset();
         }
         // Settings changed in Control Room: apply now, save once the user
         // stops (a held slider writes the file once, not per step).

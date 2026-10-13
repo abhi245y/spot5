@@ -620,8 +620,9 @@ class NowPlaying final : public Screen
         list.push_opacity(appear(8));
         const ui::Hint hints[] = {{ui::Button::cross, label},
                                   {ui::Button::l1, "Previous / Next", ui::Button::r1},
+                                  {ui::Button::circle, "Home"},
                                   {ui::Button::touchpad, "Settings"}};
-        ui::draw_hints(list, context_.fonts, ui::GlyphStyle::dark(), hints, 3, 1824, true);
+        ui::draw_hints(list, context_.fonts, ui::GlyphStyle::dark(), hints, 4, 1824, true);
         list.pop_opacity();
     }
 

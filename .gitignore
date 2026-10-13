@@ -27,3 +27,6 @@ dist/
 *creds*.json
 config.json
 build/preview/
+
+# Real Home replies and covers for the PC preview (personal data).
+tests/home-fixture/

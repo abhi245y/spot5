@@ -7,6 +7,9 @@
 
 #pragma once
 
+#include <functional>
+#include <optional>
+#include <string>
 #include <vector>
 
 #include "core/input.hpp"
@@ -41,12 +44,23 @@ struct Frame
     }
 };
 
+// A cover ready to draw (texture 0 while it is still loading).
+struct Art
+{
+    std::uint32_t texture = 0;
+    style::AlbumPalette palette;
+};
+
 // Long-lived things every screen needs.
 struct Context
 {
     const ui::Fonts &fonts;
     Settings &settings;            // live: Control Room edits it
     bool settings_changed = false; // set by a screen; the app saves and applies, then clears
+    // Covers by URL: returns what is loaded and asks for the rest. Cheap to
+    // call every frame for every visible card.
+    std::function<Art(const std::string &url)> art;
+    std::optional<PlayRequest> play; // set by a screen; the app sends it on, then clears
 };
 
 class Screen

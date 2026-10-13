@@ -13,6 +13,7 @@
 
 #include "app/config.hpp"
 #include "audio/player.hpp"
+#include "spotify/browser.hpp"
 
 namespace cspot
 {
@@ -63,6 +64,18 @@ class Session
     const std::string &device_name() const { return device_name_; }
     std::string username() const;
 
+    // Home and what to play from it (fetching runs on the browser's thread).
+    Browser &browser() { return *browser_; }
+    // Starts a resolved track list on this console, as a phone would. Only
+    // the first kQueueWindow tracks are queued (a Spirc frame carries the
+    // whole queue); the rest are returned for append() as the queue runs low.
+    static constexpr std::size_t kQueueWindow = 100;
+    bool play(const Resolved &resolved, std::vector<std::string> &rest);
+    void append(const std::vector<std::string> &tracks);
+    // Tracks queued after the current one, and the context being played.
+    std::size_t tracks_remaining() const;
+    std::string context_uri() const;
+
     // Playback commands, as if pressed on the phone.
     void set_paused(bool paused);
     void next();
@@ -74,6 +87,7 @@ class Session
     std::shared_ptr<cspot::Context> ctx_;
     std::shared_ptr<cspot::SpircHandler> handler_;
     std::unique_ptr<Player> player_;
+    std::unique_ptr<Browser> browser_; // destroyed first: it uses ctx_
     std::string device_name_;
 };
 

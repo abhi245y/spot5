@@ -19,6 +19,7 @@ constexpr const char *kDataDir = "/app0";
 const std::string kConfig = std::string(kDataDir) + "/config.json";
 const std::string kCredentials = std::string(kDataDir) + "/cspot-creds.json";
 const std::string kSettings = std::string(kDataDir) + "/settings.json";
+const std::string kHome = std::string(kDataDir) + "/home.json"; // last Home page
 // Shipped with the app (read-only).
 constexpr const char *kCertBundle = "/app0/assets/x509_bundle.bin";
 } // namespace paths
@@ -27,6 +28,8 @@ struct Config
 {
     // Spotify client id the saved credentials belong to (never in the repo).
     std::string client_id;
+    // IANA time zone for Home's time-of-day shelves ("timezone", optional).
+    std::string timezone = "UTC";
 };
 
 // Reads paths::kConfig. Returns false and sets `error` to a message for the

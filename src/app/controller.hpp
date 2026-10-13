@@ -25,6 +25,7 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "audio/player.hpp"
 #include "screens/model.hpp"
@@ -57,6 +58,10 @@ struct Status
     std::string message; // why we are in Error/Reconnecting
     std::string username; // the signed-in account, once connected
     NowPlaying now_playing;
+    std::shared_ptr<const screens::HomePage> home; // kept across reconnects
+    bool home_loading = false;
+    std::string notice; // see screens::Model::notice
+    std::uint32_t notice_id = 0;
 };
 
 class Controller
@@ -76,6 +81,9 @@ class Controller
     // session; a new device name reconnects so the phone sees it.
     void apply(const screens::Settings &settings);
 
+    // Plays a Home card on this console (resolved off the controller thread).
+    void play(const screens::PlayRequest &request);
+
   private:
     static void *thread_entry(void *self);
     void run();
@@ -90,11 +98,19 @@ class Controller
     void set_state(State next, const std::string &message = {});
     void set_step(screens::Step step);
     void publish_now_playing();
+    void step_browser();
+    void refresh_home(const char *why);
+    void set_notice(const std::string &text);
 
     // Controller thread only.
     std::unique_ptr<spotify::Session> session_;
     std::unique_ptr<spotify::Pairing> pairing_; // only in Pairing (and the login after it)
     std::int64_t reconnect_started_ms_ = 0;
+    std::int64_t home_asked_ms_ = 0; // last refresh request, to keep calls rare
+    // A long context started from Home: tracks not queued yet, added a
+    // window at a time as the queue runs low (dropped if the phone takes over).
+    std::vector<std::string> rest_;
+    std::string rest_context_;
 
     screens::Settings settings_; // what the session runs with (controller thread)
 
@@ -103,6 +119,7 @@ class Controller
     Status status_;
     std::deque<Command> commands_;
     std::optional<screens::Settings> pending_settings_;
+    std::optional<screens::PlayRequest> pending_play_;
 };
 
 } // namespace app

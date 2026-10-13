@@ -72,12 +72,14 @@ std::unique_ptr<Session> Session::start(const app::Config &config,
         return nullptr;
     }
     session->player_->set_volume(settings.volume, settings.phone_volume);
+    session->browser_ = std::make_unique<Browser>(session->ctx_, config.timezone);
     hui::sys::log("[APP] Spotify Connect running as \"%s\"", settings.device_name.c_str());
     return session;
 }
 
 Session::~Session()
 {
+    browser_.reset(); // finishes its request; uses ctx_
     // Stop cspot's tasks first (no more audio callbacks), then the output.
     if (handler_)
         handler_->disconnect();
@@ -106,6 +108,30 @@ void Session::set_volume(int level, bool follow_phone)
 std::string Session::username() const
 {
     return ctx_->config.username;
+}
+
+bool Session::play(const Resolved &resolved, std::vector<std::string> &rest)
+{
+    const std::size_t first = std::min(resolved.tracks.size(), kQueueWindow);
+    const std::vector<std::string> window(resolved.tracks.begin(),
+                                          resolved.tracks.begin() + static_cast<std::ptrdiff_t>(first));
+    rest.assign(resolved.tracks.begin() + static_cast<std::ptrdiff_t>(first), resolved.tracks.end());
+    return handler_->loadContext(resolved.context_uri, window, 0, resolved.shuffle);
+}
+
+void Session::append(const std::vector<std::string> &tracks)
+{
+    handler_->appendToContext(tracks);
+}
+
+std::size_t Session::tracks_remaining() const
+{
+    return handler_->getTrackQueue()->tracksRemaining();
+}
+
+std::string Session::context_uri() const
+{
+    return handler_->contextUri();
 }
 
 void Session::set_paused(bool paused)

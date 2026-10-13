@@ -18,7 +18,7 @@ ninja_begin "$build/build.ninja"
 
 # The UI only: the kit and the screens. Console code (cspot, audio output,
 # platform services, the app) is not part of the preview.
-sources=("$root/host/preview_main.cpp" "$root/host/platform_host.cpp")
+sources=("$root/host/preview_main.cpp" "$root/host/platform_host.cpp" "$root/src/spotify/home.cpp")
 while IFS= read -r -d '' source; do
     sources+=("$source")
 done < <(find "$root/src/gfx" "$root/src/ui" "$root/src/core" "$root/src/screens" \
@@ -36,7 +36,8 @@ for source in "${sources[@]}"; do
     else
         ninja_inputs=("$source" "$cxx")
         ninja_edge CXX "$object" "$cxx" -std=c++20 -O2 -Wall -Wextra \
-            -DGL_GLEXT_PROTOTYPES=1 -I"$root/src" -MD -MF "$object.d" -c "$source" -o "$object"
+            -DGL_GLEXT_PROTOTYPES=1 -I"$root/src" -isystem "$root/../cspot/cspot/bell/external/nlohmann_json/include" \
+            -MD -MF "$object.d" -c "$source" -o "$object"
     fi
     objects+=("$object")
 done
@@ -50,5 +51,18 @@ grep -E 'src/screens.*warning|host/.*warning' -A4 "$build/build.log" | head -40 
 
 output=${1:-"$root/build/preview"}
 mkdir -p "$output"
-EGL_PLATFORM=surfaceless LIBGL_ALWAYS_SOFTWARE=1 GALLIUM_DRIVER=llvmpipe \
-    "$build/spt_preview" "$root/assets" "$output"
+run_preview() {
+    EGL_PLATFORM=surfaceless LIBGL_ALWAYS_SOFTWARE=1 GALLIUM_DRIVER=llvmpipe \
+        "$build/spt_preview" "$root/assets" "$output"
+}
+run_preview
+# Home covers the fixture lacks: fetch them (public CDN), then render again.
+missing="$root/tests/home-fixture/missing-covers.txt"
+if [[ -s $missing ]]; then
+    echo "fetching $(wc -l < "$missing") Home covers for the preview..."
+    while read -r url file; do
+        curl -sfL -m 20 -o "$file" "$url" || rm -f "$file"
+        sleep 0.2
+    done < "$missing"
+    run_preview
+fi
