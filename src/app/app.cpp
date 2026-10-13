@@ -289,8 +289,8 @@ class CardArt
         std::size_t ready = 0;
         for (const std::string &url : urls)
         {
-            if (entries_.count(url))
-                ++ready;
+            if (entries_.count(url) || loader_.given_up(url))
+                ++ready; // a cover that will not come does not hold the launch
             else
                 loader_.request(url);
         }

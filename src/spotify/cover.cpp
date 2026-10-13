@@ -23,6 +23,12 @@ namespace
 {
 
 constexpr std::int64_t kRetryAfterMs = 30000; // a failed download, asked again
+// The app heap is 128 MB and stb_image needs ~7 bytes a pixel while decoding:
+// original-size covers above this fall back to the 640 px one, and only one
+// big image decodes at a time (all loaders share the lock).
+constexpr int kMaxDecodeSide = 2048;
+constexpr int kBigPixels = 1000 * 1000;
+std::mutex g_big_decode;
 
 std::int64_t now_ms()
 {
@@ -47,28 +53,28 @@ bool is_webp(const std::vector<std::uint8_t> &bytes)
            std::equal(bytes.begin() + 8, bytes.begin() + 12, "WEBP");
 }
 
-// Halves an RGBA image (2x2 box filter) until it fits kMaxSide.
-void shrink(std::vector<std::uint8_t> &rgba, int &width, int &height, int max_side)
+// Copies decoded RGBA into `out`, halving (2x2 box filter) while it is
+// larger than max_side; reads the decoder's buffer directly (no full copy).
+void take_pixels(const std::uint8_t *pixels, int width, int height, int max_side, Cover &out)
 {
-    while (width > max_side || height > max_side)
-    {
-        const int w = width / 2, h = height / 2;
-        std::vector<std::uint8_t> out(static_cast<std::size_t>(w) * h * 4);
-        for (int y = 0; y < h; ++y)
-            for (int x = 0; x < w; ++x)
-                for (int c = 0; c < 4; ++c)
-                {
-                    const auto at = [&](int sx, int sy) {
-                        return rgba[(static_cast<std::size_t>(sy) * width + sx) * 4 + c];
-                    };
-                    out[(static_cast<std::size_t>(y) * w + x) * 4 + c] = static_cast<std::uint8_t>(
-                        (at(2 * x, 2 * y) + at(2 * x + 1, 2 * y) + at(2 * x, 2 * y + 1) +
-                         at(2 * x + 1, 2 * y + 1) + 2) / 4);
-                }
-        rgba.swap(out);
-        width = w;
-        height = h;
-    }
+    int step = 1;
+    while (width / step > max_side || height / step > max_side)
+        step *= 2;
+    out.width = width / step;
+    out.height = height / step;
+    out.rgba.resize(static_cast<std::size_t>(out.width) * out.height * 4);
+    const int area = step * step;
+    for (int y = 0; y < out.height; ++y)
+        for (int x = 0; x < out.width; ++x)
+            for (int c = 0; c < 4; ++c)
+            {
+                int sum = 0;
+                for (int dy = 0; dy < step; ++dy)
+                    for (int dx = 0; dx < step; ++dx)
+                        sum += pixels[((static_cast<std::size_t>(y) * step + dy) * width + x * step + dx) * 4 + c];
+                out.rgba[(static_cast<std::size_t>(y) * out.width + x) * 4 + c] =
+                    static_cast<std::uint8_t>((sum + area / 2) / area);
+            }
 }
 
 } // namespace
@@ -132,6 +138,15 @@ std::optional<Cover> CoverLoader::take()
     return cover;
 }
 
+bool CoverLoader::given_up(const std::string &url)
+{
+    std::scoped_lock guard(lock_);
+    if (std::find(undecodable_.begin(), undecodable_.end(), url) != undecodable_.end())
+        return true;
+    const auto retry = retry_at_ms_.find(url);
+    return retry != retry_at_ms_.end() && now_ms() < retry->second;
+}
+
 void *CoverLoader::entry(void *self)
 {
     static_cast<CoverLoader *>(self)->run();
@@ -173,8 +188,10 @@ std::vector<std::uint8_t> CoverLoader::fetch(const std::string &url)
     if (!path.empty() && !bytes.empty())
     {
         // Temp + rename: a crash never leaves half a file that would then
-        // fail to decode on every launch.
-        const std::string temporary = path + ".tmp";
+        // fail to decode on every launch. The temp name is this thread's own:
+        // two loaders may fetch the same cover at once.
+        const std::string temporary =
+            path + ".tmp" + std::to_string(reinterpret_cast<std::uintptr_t>(pthread_self()));
         if (app::write_file(temporary, std::string(bytes.begin(), bytes.end())))
             std::rename(temporary.c_str(), path.c_str());
     }
@@ -196,8 +213,32 @@ void CoverLoader::run()
             in_flight_.push_back(url);
         }
 
-        const std::vector<std::uint8_t> bytes = fetch(url);
-        if (bytes.empty())
+        std::vector<std::uint8_t> bytes = fetch(url);
+        // An original-size cover too big for the heap: the 640 px one instead
+        // (cached under the asked-for name, so this happens once).
+        int info_w = 0, info_h = 0, info_n = 0;
+        bool no_smaller = false; // too big, and no smaller size exists
+        const bool webp = is_webp(bytes);
+        if (!bytes.empty() && !webp &&
+            stbi_info_from_memory(bytes.data(), static_cast<int>(bytes.size()), &info_w, &info_h, &info_n) &&
+            std::max(info_w, info_h) > kMaxDecodeSide)
+        {
+            const std::size_t at = url.find("ab67616d000082c1");
+            if (at != std::string::npos)
+            {
+                std::string smaller = url;
+                smaller.replace(at, 16, "ab67616d0000b273");
+                bytes = fetch(smaller);
+                if (!bytes.empty() && !cache_dir_.empty())
+                    app::write_file(cache_dir_ + "/" + cache_name(url), std::string(bytes.begin(), bytes.end()));
+            }
+            else
+            {
+                bytes.clear();
+                no_smaller = true; // treated as undecodable below
+            }
+        }
+        if (bytes.empty() && !no_smaller)
         {
             std::scoped_lock guard(lock_);
             finished(url);
@@ -207,22 +248,28 @@ void CoverLoader::run()
 
         Cover cover;
         cover.url = url;
-        if (is_webp(bytes))
         {
-            if (std::uint8_t *pixels = WebPDecodeRGBA(bytes.data(), bytes.size(), &cover.width, &cover.height))
+            const bool big = static_cast<long long>(info_w) * info_h > kBigPixels;
+            std::unique_lock<std::mutex> one_at_a_time(g_big_decode, std::defer_lock);
+            if (big || webp)
+                one_at_a_time.lock();
+            int width = 0, height = 0, channels = 0;
+            if (webp)
             {
-                cover.rgba.assign(pixels, pixels + static_cast<std::size_t>(cover.width) * cover.height * 4);
-                WebPFree(pixels);
+                if (std::uint8_t *pixels = WebPDecodeRGBA(bytes.data(), bytes.size(), &width, &height))
+                {
+                    take_pixels(pixels, width, height, kMaxSide, cover);
+                    WebPFree(pixels);
+                }
             }
-        }
-        else
-        {
-            int channels = 0;
-            if (std::uint8_t *pixels = stbi_load_from_memory(bytes.data(), static_cast<int>(bytes.size()),
-                                                             &cover.width, &cover.height, &channels, 4))
+            else if (!bytes.empty())
             {
-                cover.rgba.assign(pixels, pixels + static_cast<std::size_t>(cover.width) * cover.height * 4);
-                stbi_image_free(pixels);
+                if (std::uint8_t *pixels = stbi_load_from_memory(bytes.data(), static_cast<int>(bytes.size()),
+                                                                 &width, &height, &channels, 4))
+                {
+                    take_pixels(pixels, width, height, kMaxSide, cover);
+                    stbi_image_free(pixels);
+                }
             }
         }
         if (cover.rgba.empty())
@@ -235,7 +282,6 @@ void CoverLoader::run()
                 std::remove((cache_dir_ + "/" + cache_name(url)).c_str());
             continue;
         }
-        shrink(cover.rgba, cover.width, cover.height, kMaxSide);
         cover.palette = screens::style::palette_from_pixels(cover.rgba.data(), cover.width, cover.height);
 
         std::scoped_lock guard(lock_);

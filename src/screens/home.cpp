@@ -52,7 +52,6 @@ constexpr float kHeroTextWidth = 1120.0f;
 // Now-playing bar.
 // Now-playing pill in the top bar, ending left of the account initial.
 const Rect kMiniBar{1740 - 26 - 560, 50, 560, 64};
-constexpr float kNoticeSeconds = 3.2f;
 
 // Spotify descriptions may carry links (<a href=...>name</a>); keep the text.
 std::string plain_text(const std::string &value)
@@ -149,15 +148,6 @@ class Home final : public Screen
         dialog_.update(dt, context_.settings.reduced_motion ? 40.0f : 13.0f);
         mini_.target = model.has_track ? 1.0f : 0.0f;
         mini_.update(dt, 9.0f);
-        if (model.notice_id != notice_id_)
-        {
-            notice_id_ = model.notice_id;
-            notice_ = model.notice;
-            notice_age_ = 0.0f;
-            if (!notice_.empty())
-                feedback.play(audio::Cue::error, 1.0f, 0.0f, 0.6f);
-        }
-        notice_age_ += dt;
     }
 
     void draw(const Model &model, Frame &frame) const override
@@ -191,7 +181,6 @@ class Home final : public Screen
             frame.glass = true;
             draw_refreshing(frame.overlay, frame.glass_texture);
         }
-        draw_notice(frame.overlay);
         if (back <= 0.5f)
             draw_hints(frame.scene, model);
     }
@@ -643,25 +632,6 @@ class Home final : public Screen
         list.pop_opacity();
     }
 
-    // A short message from the app ("This can't be played here yet").
-    void draw_notice(gfx::DrawList &list) const
-    {
-        if (notice_.empty() || notice_age_ > kNoticeSeconds)
-            return;
-        const float in = tween::cubic_out(notice_age_ / 0.3f);
-        const float out = 1.0f - tween::smoothstep((notice_age_ - (kNoticeSeconds - 0.4f)) / 0.4f);
-        const float shown = std::min(in, out);
-        const ui::Fonts &fonts = context_.fonts;
-        const float w = fonts.semibold.measure(notice_, 24) + 64.0f;
-        const Rect pill{kCentreX - w * 0.5f, 140 - 20.0f * (1.0f - in), w, 60};
-        list.push_opacity(shown);
-        list.shadow({pill.x, pill.y + 8, pill.w, pill.h}, 30, 24, Color::rgb(0x000000, 0.4f));
-        list.rounded_rect(pill, 30, Color::rgb(0x0b0d16, 0.9f));
-        list.bordered_rect(pill, 30, Color::rgb(0x000000, 0.0f), 1.5f, kWhite.with_alpha(0.18f));
-        ui::text(list, fonts.semibold, notice_, kCentreX, pill.cy() + 9, 24, kWhite, gfx::Align::center);
-        list.pop_opacity();
-    }
-
     void draw_hints(gfx::DrawList &list, const Model &model) const
     {
         const ui::Fonts &fonts = context_.fonts;
@@ -698,9 +668,6 @@ class Home final : public Screen
     float refresh_age_ = 0.0f;
     tween::Spring dialog_;
     tween::Spring mini_;
-    std::uint32_t notice_id_ = 0;
-    std::string notice_;
-    float notice_age_ = 100.0f;
 };
 
 } // namespace

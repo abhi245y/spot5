@@ -156,6 +156,15 @@ void Shell::update(const Model &model, const InputFrame &input, float dt, ui::Fe
         ui::Feedback quiet;
         screen(previous_).update(model, none, dt, quiet, ignored);
     }
+    if (model.notice_id != notice_id_)
+    {
+        notice_id_ = model.notice_id;
+        notice_ = model.notice;
+        notice_age_ = 0.0f;
+        if (!notice_.empty())
+            feedback.play(audio::Cue::error, 1.0f, 0.0f, 0.6f);
+    }
+    notice_age_ += dt;
     reconnecting_.target = model.connection == Connection::reconnecting ? 1.0f : 0.0f;
     reconnecting_.update(dt, 10.0f);
 }
@@ -282,6 +291,22 @@ void Shell::draw_overlays(gfx::DrawList &list, const Model &model)
         ui::text(list, fonts.semibold, label, pill.x + 54, pill.cy() + 8, 22, kInk);
         list.pop_opacity();
         (void)model;
+    }
+
+    // A short message from the app ("This can't be played here yet").
+    constexpr float kNoticeSeconds = 3.2f;
+    if (!notice_.empty() && notice_age_ < kNoticeSeconds)
+    {
+        const float in = tween::cubic_out(notice_age_ / 0.3f);
+        const float out = 1.0f - tween::smoothstep((notice_age_ - (kNoticeSeconds - 0.4f)) / 0.4f);
+        const float w = fonts.semibold.measure(notice_, 24) + 64.0f;
+        const gfx::Rect pill{kCentreX - w * 0.5f, 140 - 20.0f * (1.0f - in), w, 60};
+        list.push_opacity(std::min(in, out));
+        list.shadow({pill.x, pill.y + 8, pill.w, pill.h}, 30, 24, Color::rgb(0x000000, 0.4f));
+        list.rounded_rect(pill, 30, kNight.with_alpha(0.92f));
+        list.bordered_rect(pill, 30, kClear, 1.5f, kInk.with_alpha(0.18f));
+        ui::text(list, fonts.semibold, notice_, kCentreX, pill.cy() + 9, 24, kInk, gfx::Align::center);
+        list.pop_opacity();
     }
 
 }

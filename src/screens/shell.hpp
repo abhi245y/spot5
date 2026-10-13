@@ -77,6 +77,10 @@ class Shell
     std::uint32_t glass_texture_ = 0;
 
     tween::Spring reconnecting_;
+    // Model::notice, shown once on whatever screen is up.
+    std::uint32_t notice_id_ = 0;
+    std::string notice_;
+    float notice_age_ = 100.0f;
 };
 
 } // namespace screens
