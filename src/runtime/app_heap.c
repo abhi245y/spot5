@@ -6,9 +6,14 @@
 // --wrap for the malloc family whenever this file exists, routing allocations
 // into a fixed sceLibcMspace that is never unmapped.
 //
-// ps5-spotify: the size is the largest of kHeapSizes the console grants while
-// leaving kHeadroom for everything that maps memory itself (thread stacks,
-// the GL runtime); 128 MiB was the kit's fixed choice.
+// ps5-spotify: the heap lives in direct memory (1 GiB), the pool native PS5
+// ports use for big allocations: a native app's flexible memory (where plain
+// mmap comes from) is only ~190-448 MiB, which is why 512 and 384 were
+// refused. Recipe from PS5LM docs/RESEARCH.md (PS5SX2, PS5CEMU, ProsperoAI):
+// type 12, 2 MiB aligned, mapped at an address hint far from the window the
+// GPU driver maps into later. If direct memory says no, the heap falls back
+// to the largest flexible size that leaves kHeadroom for thread stacks and
+// the GL runtime (128 MiB was the kit's fixed choice).
 
 #include <errno.h>
 #include <stdatomic.h>
@@ -16,6 +21,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/mman.h>
+#include <unistd.h>
+#include <sys/types.h>
 
 void *__real_malloc(size_t size);
 void *__real_calloc(size_t count, size_t size);
@@ -25,6 +32,11 @@ int __real_posix_memalign(void **address, size_t alignment, size_t size);
 size_t __real_malloc_usable_size(const void *address);
 
 void *sceLibcMspaceCreate(const char *name, void *base, size_t size, unsigned flags);
+int sceKernelAllocateDirectMemory(off_t search_start, off_t search_end, size_t len, size_t alignment,
+                                  int memory_type, off_t *phys_out);
+int sceKernelMapDirectMemory(void **addr, size_t len, int prot, int flags, off_t phys, size_t alignment);
+int sceKernelReleaseDirectMemory(off_t start, size_t len);
+size_t sceKernelGetDirectMemorySize(void);
 void *sceLibcMspaceMalloc(void *mspace, size_t size);
 void *sceLibcMspaceCalloc(void *mspace, size_t count, size_t size);
 void *sceLibcMspaceRealloc(void *mspace, void *address, size_t size);
@@ -36,6 +48,27 @@ size_t sceLibcMspaceMallocUsableSize(const void *address);
 static const size_t kHeapSizes[] = {512u << 20, 384u << 20, 256u << 20, 128u << 20};
 static const size_t kHeadroom = 64u << 20;
 static size_t hui_heap_size;
+static int hui_heap_direct; /* 1: the heap is direct memory */
+
+static const size_t kDirectHeapSize = 1024u << 20;
+static const size_t kDirectAlign = 2u << 20;
+static const int kDirectType = 12;
+#define HUI_DIRECT_HINT ((void *)0x1000000000ull) /* 64 GiB: clear of the GPU driver's window */
+
+static void *hui_heap_map_direct(size_t size)
+{
+    off_t phys = 0;
+    if (sceKernelAllocateDirectMemory(0, (off_t)sceKernelGetDirectMemorySize(), size, kDirectAlign, kDirectType,
+                                      &phys) != 0)
+        return MAP_FAILED;
+    void *address = HUI_DIRECT_HINT;
+    if (sceKernelMapDirectMemory(&address, size, PROT_READ | PROT_WRITE, 0, phys, kDirectAlign) != 0)
+    {
+        sceKernelReleaseDirectMemory(phys, size);
+        return MAP_FAILED;
+    }
+    return address;
+}
 
 static atomic_int hui_heap_state;
 static void *hui_heap_base;
@@ -89,7 +122,15 @@ static int hui_heap_ready(void)
 
     // The first size that also leaves the headroom free (probed by mapping
     // both, then giving the headroom back; this runs before any thread).
-    void *base = MAP_FAILED;
+    /* Escape hatch: an empty file /app0/heap-flexible (put there over FTP)
+     * keeps the heap in flexible memory, in case direct memory ever stops
+     * the app from starting. */
+    void *base = access("/app0/heap-flexible", F_OK) == 0 ? MAP_FAILED : hui_heap_map_direct(kDirectHeapSize);
+    if (base != MAP_FAILED)
+    {
+        hui_heap_size = kDirectHeapSize;
+        hui_heap_direct = 1;
+    }
     for (size_t i = 0; i < sizeof(kHeapSizes) / sizeof(kHeapSizes[0]) && base == MAP_FAILED; ++i)
     {
         const size_t size = kHeapSizes[i];
@@ -197,6 +238,12 @@ size_t __wrap_malloc_usable_size(const void *address)
 size_t hui_heap_capacity(void)
 {
     return hui_heap_size;
+}
+
+/* 1 when the heap is direct memory, 0 when it is flexible memory. */
+int hui_heap_is_direct(void)
+{
+    return hui_heap_direct;
 }
 
 /* Diagnostics: current heap counters for logs and the diagnostics screen. */

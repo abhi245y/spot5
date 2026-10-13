@@ -70,6 +70,7 @@ class CoverLoader
     static void *entry(void *self);
     void run();
     std::vector<std::uint8_t> fetch(const std::string &url);
+    void save(const std::string &url, const std::vector<std::uint8_t> &bytes);
     void finished(const std::string &url);
 
     std::size_t max_queued_;

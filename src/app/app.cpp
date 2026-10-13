@@ -34,6 +34,7 @@
 #include "ui/fonts.hpp"
 
 extern "C" std::size_t hui_heap_capacity(void); // runtime/app_heap.c
+extern "C" int hui_heap_is_direct(void);
 extern "C" void hui_heap_stats(std::size_t *live, std::size_t *peak, std::size_t *blocks,
                                std::size_t *failures);
 
@@ -354,7 +355,8 @@ void App::run()
     sys::log("[APP] display %dx%d (asked %dx%d)", display.width(), display.height(), mode[0], mode[1]);
     // The heap exists by now (made on the first allocation): its size is what
     // the console let it be.
-    sys::log("[APP] heap %zu MB", hui_heap_capacity() >> 20);
+    sys::log("[APP] heap %zu MB (%s memory)", hui_heap_capacity() >> 20,
+             hui_heap_is_direct() ? "direct" : "flexible");
     gfx::Renderer renderer;
     gfx::Font regular, semibold, display_face, mono;
     ui::Fonts fonts;

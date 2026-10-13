@@ -28,6 +28,7 @@ namespace
 {
 
 constexpr std::int64_t kRetryAfterMs = 30000; // a failed download, asked again
+constexpr std::size_t kMaxWaiting = 16;       // decoded covers not yet uploaded
 // What decoding costs, worked out before anything is allocated (a failed
 // allocation ends the app on this console): stb_image keeps the output
 // (4 bytes a pixel) and the colour planes (3), plus 16-bit coefficients for
@@ -195,7 +196,11 @@ void CoverLoader::request(const std::string &url)
     const auto known = [&](const auto &list) {
         return std::find(list.begin(), list.end(), url) != list.end();
     };
-    if (url == last_requested_ || known(in_flight_) || known(wanted_) || known(undecodable_))
+    // Also skip covers decoded and waiting for upload: asked again every
+    // frame until uploaded, they were decoded again and again (the cause of
+    // a 200 MB heap spike and of the out-of-memory crash).
+    const bool waiting = std::any_of(done_.begin(), done_.end(), [&](const Cover &c) { return c.url == url; });
+    if (url == last_requested_ || waiting || known(in_flight_) || known(wanted_) || known(undecodable_))
         return;
     if (const auto retry = retry_at_ms_.find(url); retry != retry_at_ms_.end() && now_ms() < retry->second)
         return;
@@ -213,6 +218,7 @@ std::optional<Cover> CoverLoader::take()
         return std::nullopt;
     std::optional<Cover> cover(std::move(done_.front()));
     done_.pop_front();
+    wake_.notify_all(); // room for another decoded cover
     return cover;
 }
 
@@ -263,25 +269,30 @@ std::vector<std::uint8_t> CoverLoader::fetch(const std::string &url)
         hui::sys::log("[APP] cover download failed: %s", e.what());
         return {};
     }
-    if (!path.empty() && !bytes.empty())
-    {
-        // Temp + rename: a crash never leaves half a file that would then
-        // fail to decode on every launch. The temp name is this thread's own:
-        // two loaders may fetch the same cover at once.
-        const std::string temporary =
-            path + ".tmp" + std::to_string(reinterpret_cast<std::uintptr_t>(pthread_self()));
-        if (app::write_file(temporary, std::string(bytes.begin(), bytes.end())) &&
-            std::rename(temporary.c_str(), path.c_str()) == 0)
-        {
-            std::scoped_lock guard(g_index);
-            if (FILE *index = std::fopen((cache_dir_ + "/" + kIndex).c_str(), "a"))
-            {
-                std::fprintf(index, "%s\n", cache_name(url).c_str());
-                std::fclose(index);
-            }
-        }
-    }
+    save(url, bytes);
     return bytes;
+}
+
+// Keeps the bytes in the cache under the URL's name, and lists it in the
+// index (the only way Clear cache can find it again).
+void CoverLoader::save(const std::string &url, const std::vector<std::uint8_t> &bytes)
+{
+    if (cache_dir_.empty() || bytes.empty())
+        return;
+    // Temp + rename: a crash never leaves half a file that would then fail to
+    // decode on every launch. The temp name is this thread's own: two
+    // loaders may fetch the same cover at once.
+    const std::string path = cache_dir_ + "/" + cache_name(url);
+    const std::string temporary = path + ".tmp" + std::to_string(reinterpret_cast<std::uintptr_t>(pthread_self()));
+    if (!app::write_file(temporary, std::string(bytes.begin(), bytes.end())) ||
+        std::rename(temporary.c_str(), path.c_str()) != 0)
+        return;
+    std::scoped_lock guard(g_index);
+    if (FILE *index = std::fopen((cache_dir_ + "/" + kIndex).c_str(), "a"))
+    {
+        std::fprintf(index, "%s\n", cache_name(url).c_str());
+        std::fclose(index);
+    }
 }
 
 void CoverLoader::run()
@@ -291,7 +302,9 @@ void CoverLoader::run()
         std::string url;
         {
             std::unique_lock guard(lock_);
-            wake_.wait(guard, [&] { return stop_ || !wanted_.empty(); });
+            // Decoded covers wait here until the drawing thread uploads them
+            // (a few a frame): at most kMaxWaiting, or memory piles up.
+            wake_.wait(guard, [&] { return stop_ || (!wanted_.empty() && done_.size() < kMaxWaiting); });
             if (stop_)
                 return;
             url = std::move(wanted_.front());
@@ -300,13 +313,16 @@ void CoverLoader::run()
         }
 
         std::vector<std::uint8_t> bytes = fetch(url);
-        // An original-size cover too big for the heap: the 640 px one instead
-        // (cached under the asked-for name, so this happens once).
+        // A big image (over a megapixel) that does not fit in memory now: an
+        // original-size album cover becomes the 640 px one (cached under the
+        // asked-for name, so this happens once); anything else waits.
+        // Ordinary covers (a few MB to decode) are never held back.
         int info_w = 0, info_h = 0, info_n = 0;
-        bool no_smaller = false; // too big, and no smaller size exists
         const bool webp = is_webp(bytes);
+        bool wait_for_memory = false;
         if (!bytes.empty() && !webp &&
             stbi_info_from_memory(bytes.data(), static_cast<int>(bytes.size()), &info_w, &info_h, &info_n) &&
+            static_cast<long long>(info_w) * info_h > kBigPixels &&
             !fits_decode_budget(info_w, info_h, is_progressive_jpeg(bytes)))
         {
             const std::size_t at = url.find("ab67616d000082c1");
@@ -315,16 +331,14 @@ void CoverLoader::run()
                 std::string smaller = url;
                 smaller.replace(at, 16, "ab67616d0000b273");
                 bytes = fetch(smaller);
-                if (!bytes.empty() && !cache_dir_.empty())
-                    app::write_file(cache_dir_ + "/" + cache_name(url), std::string(bytes.begin(), bytes.end()));
+                save(url, bytes);
             }
             else
             {
-                bytes.clear();
-                no_smaller = true; // treated as undecodable below
+                wait_for_memory = true;
             }
         }
-        if (bytes.empty() && !no_smaller)
+        if (bytes.empty() || wait_for_memory)
         {
             std::scoped_lock guard(lock_);
             finished(url);
