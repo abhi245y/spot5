@@ -54,8 +54,9 @@ class CoverLoader
     // A finished cover, once each; empty while nothing new is ready.
     std::optional<Cover> take();
 
-    // Larger than this is halved before upload (2000 px -> 1000 px).
-    static constexpr int kMaxSide = 1600;
+    // Larger than this is halved before upload. 2048 keeps the original
+    // album art (~2000 px) whole, for big canvases drawn at 4K.
+    static constexpr int kMaxSide = 2048;
 
     // True once this cover will not come (cannot be decoded, or its download
     // failed moments ago): a launch screen waiting for covers stops counting it.

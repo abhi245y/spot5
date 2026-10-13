@@ -60,6 +60,7 @@ screens::Settings load_settings()
     if (settings.device_name.empty() || settings.device_name.size() > 64)
         settings.device_name = "PS5";
     settings.reduced_motion = json.value("reduced_motion", settings.reduced_motion);
+    settings.resolution = std::clamp(json.value("resolution", settings.resolution), 0, 2);
     return settings;
 }
 
@@ -69,7 +70,8 @@ bool save_settings(const screens::Settings &settings)
                                  {"volume", settings.volume},
                                  {"phone_volume", settings.phone_volume},
                                  {"device_name", settings.device_name},
-                                 {"reduced_motion", settings.reduced_motion}};
+                                 {"reduced_motion", settings.reduced_motion},
+                                 {"resolution", settings.resolution}};
     const std::string temporary = paths::kSettings + ".tmp";
     return write_file(temporary, json.dump(2)) &&
            std::rename(temporary.c_str(), paths::kSettings.c_str()) == 0;

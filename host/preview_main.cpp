@@ -284,6 +284,8 @@ const std::vector<Beat> &script()
         {3.5f, [](Model &m) { playing(m, "a", "Aashiqana", "Chaar Diwaari", "Aashiqana", 47000, 214000); },
          0, nullptr},
         {0.8f, nullptr, 0, "06g-home-mini-player"},
+        {0.7f, [](Model &m) { m.busy = "Shuffling My playlist #6"; }, 0, "06h-busy-pill"},
+        {0.2f, [](Model &m) { m.busy.clear(); }},
         {0.3f, nullptr, action_bit(Action::north), "07-home-to-playing"},
         {0.4f, nullptr, 0, nullptr},
         {0.4f, nullptr, 0, "08a-cover-pending"},

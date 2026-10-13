@@ -16,6 +16,8 @@
 #include "third_party/stb/stb_image.h"
 #include "webp/decode.h"
 
+extern "C" std::size_t hui_heap_capacity(void); // runtime/app_heap.c
+
 namespace spotify
 {
 
@@ -23,10 +25,14 @@ namespace
 {
 
 constexpr std::int64_t kRetryAfterMs = 30000; // a failed download, asked again
-// The app heap is 128 MB and stb_image needs ~7 bytes a pixel while decoding:
-// original-size covers above this fall back to the 640 px one, and only one
-// big image decodes at a time (all loaders share the lock).
-constexpr int kMaxDecodeSide = 2048;
+// stb_image needs ~7 bytes a pixel while decoding. Original-size covers
+// above this side fall back to the 640 px one: 4096 (decoded, then halved)
+// when the app heap is 256 MB or more, else 2048. Only one big image decodes
+// at a time (all loaders share the lock).
+int max_decode_side()
+{
+    return hui_heap_capacity() >= (256u << 20) ? 4096 : 2048;
+}
 constexpr int kBigPixels = 1000 * 1000;
 std::mutex g_big_decode;
 
@@ -83,7 +89,7 @@ CoverLoader::CoverLoader(std::size_t max_queued, int workers, std::string cache_
     : max_queued_(std::max<std::size_t>(1, max_queued)), cache_dir_(std::move(cache_dir))
 {
     if (!cache_dir_.empty())
-        mkdir(cache_dir_.c_str(), 0755); // exists already after the first run
+        mkdir(cache_dir_.c_str(), 0777); // exists already after the first run; 0777 so FTP can clear it
     for (int i = 0; i < std::max(1, workers); ++i)
     {
         pthread_attr_t attr;
@@ -221,7 +227,7 @@ void CoverLoader::run()
         const bool webp = is_webp(bytes);
         if (!bytes.empty() && !webp &&
             stbi_info_from_memory(bytes.data(), static_cast<int>(bytes.size()), &info_w, &info_h, &info_n) &&
-            std::max(info_w, info_h) > kMaxDecodeSide)
+            std::max(info_w, info_h) > max_decode_side())
         {
             const std::size_t at = url.find("ab67616d000082c1");
             if (at != std::string::npos)

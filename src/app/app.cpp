@@ -33,6 +33,10 @@
 #include "spotify/home.hpp"
 #include "ui/fonts.hpp"
 
+extern "C" std::size_t hui_heap_capacity(void); // runtime/app_heap.c
+extern "C" void hui_heap_stats(std::size_t *live, std::size_t *peak, std::size_t *blocks,
+                               std::size_t *failures);
+
 namespace app
 {
 
@@ -159,6 +163,7 @@ screens::Model model_from(const Status &status)
     model.artwork_total = status.artwork_total;
     model.notice = status.notice;
     model.notice_id = status.notice_id;
+    model.busy = status.busy;
     const NowPlaying &now = status.now_playing;
     model.has_track = !now.title.empty();
     model.track.id = now.track_id;
@@ -309,9 +314,10 @@ class CardArt
         std::size_t bytes = 0;
     };
     gfx::Renderer &renderer_;
-    // Long queue (the whole page at launch), three downloads at a time,
+    // Long queue (the whole page at launch), six downloads at a time (each
+    // is a new TLS connection, so more in flight is what makes it quick),
     // kept on disk for the next launch.
-    spotify::CoverLoader loader_{512, 3, paths::kCovers};
+    spotify::CoverLoader loader_{512, 6, paths::kCovers};
     std::unordered_map<std::string, Entry> entries_;
     std::uint64_t frame_ = 0;
     std::size_t bytes_ = 0;
@@ -322,14 +328,22 @@ class CardArt
 void App::run()
 {
     sys::log("[APP] start");
+    // The first allocation made the heap: say how big the console let it be.
+    sys::log("[APP] heap %zu MB", hui_heap_capacity() >> 20);
     bell::setDefaultLogger();
 
+    // The display opens at the saved resolution, falling back to 1080p
+    // (everything is drawn at the physical size, so 4K is natively sharp).
+    screens::Settings settings = load_settings();
+    static constexpr int kModes[3][2] = {{1920, 1080}, {2560, 1440}, {3840, 2160}};
+    const int *mode = kModes[std::clamp(settings.resolution, 0, 2)];
     ps5::Display display;
-    if (!display.open(1920, 1080))
+    if (!display.open(mode[0], mode[1]) && (settings.resolution == 0 || !display.open(1920, 1080)))
     {
         sys::log("[APP] fatal: display open failed");
         sys::park();
     }
+    sys::log("[APP] display %dx%d (asked %dx%d)", display.width(), display.height(), mode[0], mode[1]);
     gfx::Renderer renderer;
     gfx::Font regular, semibold, display_face, mono;
     ui::Fonts fonts;
@@ -342,7 +356,6 @@ void App::run()
         sys::park();
     }
 
-    screens::Settings settings = load_settings();
     Controller controller;
     controller.apply(settings); // before start: the first login uses them
     if (!init_certificates() || !controller.start())
@@ -440,6 +453,13 @@ void App::run()
         }
         if (++frames == 1)
             sys::log("[APP] first frame; splash hidden=%d", sys::hide_splash_screen() ? 1 : 0);
+        if (frames % 3600 == 0) // about once a minute: how much memory the app really uses
+        {
+            std::size_t live = 0, peak = 0, failures = 0;
+            hui_heap_stats(&live, &peak, nullptr, &failures);
+            sys::log("[APP] heap live %zu MB, peak %zu MB of %zu MB, failures %zu", live >> 20, peak >> 20,
+                     hui_heap_capacity() >> 20, failures);
+        }
     }
 }
 

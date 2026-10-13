@@ -76,7 +76,13 @@ class Shell
     float clock_ = 0.0f;
     std::uint32_t glass_texture_ = 0;
 
-    tween::Spring reconnecting_;
+    // Top bar: the now-playing bar (Home and pages) and one status pill
+    // (busy action, reconnecting, updating Home).
+    tween::Spring mini_;
+    tween::Spring status_shown_;
+    tween::Spring status_width_;
+    std::string status_text_, status_previous_;
+    tween::Timer status_swap_;
     // Model::notice, shown once on whatever screen is up.
     std::uint32_t notice_id_ = 0;
     std::string notice_;

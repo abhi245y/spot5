@@ -26,7 +26,7 @@ constexpr std::int64_t kManualRefreshGapMs = 60 * 1000;
 constexpr std::int64_t kRetryGapMs = 10 * 60 * 1000;
 // Launch waits for Home's covers at most this long (a dead link must not
 // keep the app on the loader).
-constexpr std::int64_t kArtworkWaitMs = 20000;
+constexpr std::int64_t kArtworkWaitMs = 45000;
 // Add the next window of a long context when this many tracks are left.
 constexpr std::size_t kQueueLowWater = 10;
 
@@ -167,11 +167,17 @@ void Controller::handle_commands()
             break;
         case Command::next:
             if (state == State::Ready)
+            {
+                set_busy("Skipping", Until::track_change);
                 session_->next();
+            }
             break;
         case Command::previous:
             if (state == State::Ready)
+            {
+                set_busy("Going back", Until::restart);
                 session_->previous();
+            }
             break;
         case Command::forget_login:
             // Delete the saved login and end the session; connecting again
@@ -383,6 +389,7 @@ void Controller::step_browser()
         queue_dirty_ = true;
     }
     step_queue();
+    step_busy();
 
     // Page in the rest of a long context before the queue runs dry. The
     // locked count is checked first; the context only when it is low.
@@ -460,6 +467,11 @@ void Controller::handle_request(const screens::Request &request)
         {
             browser.resolve(request.play);
         }
+        {
+            const std::string title = title_of(request.play.uri);
+            set_busy((request.play.shuffle ? "Shuffling " : "Starting ") + (title.empty() ? std::string("playback") : title),
+                     Until::track_change);
+        }
         break;
     case Kind::open:
         page_ = {};
@@ -467,6 +479,7 @@ void Controller::handle_request(const screens::Request &request)
         page_uris_.clear();
         publish_page();
         browser.open(request.card.uri);
+        set_busy("Loading " + request.card.title, Until::page_loaded);
         break;
     case Kind::describe:
     {
@@ -482,6 +495,12 @@ void Controller::handle_request(const screens::Request &request)
         session_->seek(request.ms);
         break;
     case Kind::jump:
+        if (request.index >= 0 && request.index < static_cast<int>(queue_uris_.size()))
+        {
+            const auto found = details_.find(queue_uris_[static_cast<std::size_t>(request.index)]);
+            set_busy(found != details_.end() ? "Jumping to " + found->second.title : std::string("Jumping"),
+                     Until::track_change);
+        }
         if (!session_->jump(request.index))
             set_notice("That track is no longer in the queue");
         break;
@@ -544,6 +563,56 @@ void Controller::set_notice(const std::string &text)
     std::scoped_lock guard(lock_);
     status_.notice = text;
     ++status_.notice_id;
+    status_.busy.clear(); // a notice is how a busy action ends when it fails
+}
+
+void Controller::set_busy(const std::string &text, Until until)
+{
+    std::scoped_lock guard(lock_);
+    status_.busy = text;
+    busy_until_ = until;
+    busy_track_ = status_.now_playing.track_id;
+    busy_since_ms_ = now_ms();
+}
+
+// Ends the busy pill once its action has visibly happened (or given up).
+void Controller::step_busy()
+{
+    constexpr std::int64_t kGiveUpMs = 25000;
+    std::scoped_lock guard(lock_);
+    if (status_.busy.empty())
+        return;
+    const NowPlaying &now = status_.now_playing;
+    const bool new_track = !now.track_id.empty() && now.track_id != busy_track_;
+    bool done = false;
+    switch (busy_until_)
+    {
+    case Until::track_change:
+        done = new_track;
+        break;
+    case Until::restart:
+        done = new_track || (now_ms() - busy_since_ms_ > 1200 && now.position_ms < 2500);
+        break;
+    case Until::page_loaded:
+        done = !page_.loading;
+        break;
+    }
+    if (done || now_ms() - busy_since_ms_ > kGiveUpMs)
+        status_.busy.clear();
+}
+
+// A card's title from the open page or Home (for the busy pill).
+std::string Controller::title_of(const std::string &uri)
+{
+    if (uri == page_.card.uri)
+        return page_.card.title;
+    const std::shared_ptr<const screens::HomePage> home = status().home;
+    if (home)
+        for (const screens::Shelf &shelf : home->shelves)
+            for (const screens::Card &card : shelf.cards)
+                if (card.uri == uri)
+                    return card.title;
+    return {};
 }
 
 void Controller::set_state(State next, const std::string &message)
@@ -554,7 +623,10 @@ void Controller::set_state(State next, const std::string &message)
     status_.state = next;
     status_.message = message;
     if (next != State::Ready && next != State::Reconnecting)
+    {
         status_.now_playing = {};
+        status_.busy.clear();
+    }
 }
 
 void Controller::set_step(screens::Step step)

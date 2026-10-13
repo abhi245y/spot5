@@ -145,6 +145,7 @@ struct Settings
     bool phone_volume = true;     // the phone's volume buttons control this console
     std::string device_name = "PS5";
     bool reduced_motion = false;
+    int resolution = 2;           // 0: 1080p, 1: 1440p, 2: 4K (the display opens at it on launch)
 };
 
 // Facts for Control Room's About page.
@@ -172,6 +173,7 @@ struct Model
     int artwork_total = 0;                // ... of this many
     std::string notice;                   // a short message, e.g. "This can't be played here yet"
     std::uint32_t notice_id = 0;          // changes with each new notice: show it once
+    std::string busy;                     // an action under way ("Shuffling Focus Mix"); empty when idle
 
     bool has_track = false; // a track is loaded (from the phone or from Home)
     Track track;

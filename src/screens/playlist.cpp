@@ -128,6 +128,10 @@ class Playlist final : public Screen
             if (zone_ == Zone::actions || row_ < rows)
             {
                 context_.requests.push_back(request);
+                // When the song starts, take the list to it (a shuffle starts anywhere).
+                follow_ = true;
+                follow_from_ = playing_;
+                follow_age_ = 0.0f;
                 feedback.play(audio::Cue::launch);
                 feedback.rumble(0.6f, 0.15f);
             }
@@ -158,6 +162,18 @@ class Playlist final : public Screen
         for (ui::SpringColor &colour : palette_)
             colour.update(dt, 4.0f);
         playing_ = playing_row(model, *page);
+        if (follow_)
+        {
+            follow_age_ += dt;
+            if (playing_ >= 0 && playing_ != follow_from_)
+            {
+                zone_ = Zone::list;
+                row_ = playing_;
+                follow_ = false;
+            }
+            else if (follow_age_ > 25.0f)
+                follow_ = false;
+        }
         breath_.target = playing_ >= 0 && !model.paused ? 1.0f : 0.0f;
         breath_.update(dt, 4.0f);
     }
@@ -176,7 +192,7 @@ class Playlist final : public Screen
         draw_header(list, *page);
         draw_actions(list);
         draw_tracks(list, model, *page);
-        draw_hints(list, *page);
+        draw_hints(list, model, *page);
     }
 
   private:
@@ -476,17 +492,19 @@ class Playlist final : public Screen
         list.pop_opacity();
     }
 
-    void draw_hints(gfx::DrawList &list, const PlaylistPage &page) const
+    void draw_hints(gfx::DrawList &list, const Model &model, const PlaylistPage &page) const
     {
         list.push_opacity(tween::stagger(age_, 5, 0.08f, 0.5f));
         const char *play = zone_ == Zone::list ? "Play from here" : action_ == 1 ? "Shuffle" : "Play";
-        ui::Hint hints[4];
+        ui::Hint hints[5];
         int count = 0;
         if (!page.tracks.empty() || zone_ == Zone::actions)
             hints[count++] = {ui::Button::cross, play};
         if (zone_ == Zone::list)
             hints[count++] = {ui::Button::l1, "Page", ui::Button::r1};
         hints[count++] = {ui::Button::circle, "Back"};
+        if (model.has_track)
+            hints[count++] = {ui::Button::triangle, "Now Playing"};
         ui::draw_hints(list, context_.fonts, ui::GlyphStyle::dark(), hints, count, kRight, true);
         list.pop_opacity();
     }
@@ -504,6 +522,9 @@ class Playlist final : public Screen
     ui::SpringColor palette_[4];
     tween::Spring breath_;
     std::set<std::string> asked_;
+    bool follow_ = false; // move to the playing row once the asked-for song starts
+    int follow_from_ = -1;
+    float follow_age_ = 0.0f;
 };
 
 } // namespace

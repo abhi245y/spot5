@@ -84,6 +84,7 @@ enum class Field : std::uint8_t
     account,
     forget,
     reduce_motion,
+    resolution,
     reset,
     quit,
     count,
@@ -134,6 +135,8 @@ constexpr Row kAccountRows[] = {
      Kind::action, Field::forget},
 };
 constexpr Row kDisplayRows[] = {
+    {"Resolution", "How sharp everything is drawn. 4K matches a 4K TV. Applies the next time the app starts.",
+     Kind::stepper, Field::resolution},
     {"Reduce motion", "Replaces slides, zooms and overshoot with short fades.", Kind::toggle,
      Field::reduce_motion},
 };
@@ -152,13 +155,14 @@ constexpr Category kCategories[] = {
     {"Playback", "Sound quality and how loud this console plays.", kPlaybackRows, 3},
     {"Device", "How this console shows up in Spotify.", kDeviceRows, 1},
     {"Account", "Who is signed in, and how to forget it.", kAccountRows, 2},
-    {"Display", "Make the interface calmer.", kDisplayRows, 1},
+    {"Display", "How sharp and how calm the interface is.", kDisplayRows, 2},
     {"About", "What this app is built from, and the way back to its defaults.", kAboutRows, 1},
     {"Quit", "Close the app.", kQuitRows, 1},
 };
 constexpr int kCategoryCount = 6;
 
 constexpr const char *kQualities[] = {"96 kbps", "160 kbps", "320 kbps"};
+constexpr const char *kResolutions[] = {"1080p", "1440p", "4K"};
 constexpr const char *kQualityNames[] = {"Normal", "High", "Very high"};
 constexpr const char *kMotionNotes[] = {
     "Screens and panels fade instead of sliding",
@@ -405,6 +409,8 @@ class ControlRoom final : public Screen
             return s.phone_volume ? 1 : 0;
         case Field::reduce_motion:
             return s.reduced_motion ? 1 : 0;
+        case Field::resolution:
+            return s.resolution;
         default:
             return 0;
         }
@@ -417,6 +423,7 @@ class ControlRoom final : public Screen
         case Field::volume:
             return 10;
         case Field::quality:
+        case Field::resolution:
             return 2;
         default:
             return 1;
@@ -440,6 +447,10 @@ class ControlRoom final : public Screen
         case Field::reduce_motion:
             s.reduced_motion = next != 0;
             break;
+        case Field::resolution:
+            s.resolution = next;
+            mark_changed("Saved \xC2\xB7 next launch");
+            return;
         default:
             return;
         }
@@ -1127,8 +1138,9 @@ class ControlRoom final : public Screen
         if (focused)
             list.rounded_rect({cx - kStepperW * 0.5f + 34, cy - 24, kStepperW - 68, 48}, 14,
                               kDeep.with_alpha(0.35f));
-        draw_changing(list, fonts.semibold, state, kQualities[std::clamp(state.previous, 0, 2)],
-                      kQualities[std::clamp(state.seen, 0, 2)], cx, centred(cy, 28), 28,
+        const char *const *names = field == Field::resolution ? kResolutions : kQualities;
+        draw_changing(list, fonts.semibold, state, names[std::clamp(state.previous, 0, 2)],
+                      names[std::clamp(state.seen, 0, 2)], cx, centred(cy, 28), 28,
                       focused ? kInk : kInk.with_alpha(0.84f), gfx::Align::center);
         const float nudge = 7.0f * state.press.value * travel();
         const float rest = focused ? 1.0f : 0.5f;

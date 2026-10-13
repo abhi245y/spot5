@@ -50,8 +50,6 @@ constexpr float kTileH = 84.0f;
 const Rect kHeroArt{1316, 132, 440, 440};
 constexpr float kHeroTextWidth = 1120.0f;
 // Now-playing bar.
-// Now-playing pill in the top bar, ending left of the account initial.
-const Rect kMiniBar{1740 - 26 - 560, 50, 560, 64};
 
 // Spotify descriptions may carry links (<a href=...>name</a>); keep the text.
 std::string plain_text(const std::string &value)
@@ -146,8 +144,6 @@ class Home final : public Screen
         nudge_.update(dt, 9.0f);
         dialog_.target = refreshing_ ? 1.0f : 0.0f;
         dialog_.update(dt, context_.settings.reduced_motion ? 40.0f : 13.0f);
-        mini_.target = model.has_track ? 1.0f : 0.0f;
-        mini_.update(dt, 9.0f);
     }
 
     void draw(const Model &model, Frame &frame) const override
@@ -172,7 +168,6 @@ class Home final : public Screen
         // a hint and never fights the now-playing bar or the button hints.
         list.gradient_rect({0, 900, gfx::kVirtualWidth, gfx::kVirtualHeight - 900}, 0,
                            palette_[0].value(0.0f), palette_[0].value(0.92f));
-        draw_mini_player(list, model);
         list.pop_transform();
         if (back > 0.01f)
         {
@@ -416,9 +411,6 @@ class Home final : public Screen
             ui::text(list, fonts.semibold, ui::upper(model.username.substr(0, 1)), 1800, 91, 22,
                      Color::rgb(0x0b0d16), gfx::Align::center);
         }
-        if (model.home_loading)
-            list.arc(model.has_track ? kMiniBar.x - 34 : 1740, 82, 12, 3, clock_ * 5.5f, 2.2f,
-                     kWhite.with_alpha(0.7f));
         list.pop_opacity();
     }
 
@@ -572,47 +564,6 @@ class Home final : public Screen
         list.pop_opacity();
     }
 
-    void draw_mini_player(gfx::DrawList &list, const Model &model) const
-    {
-        const float shown = mini_.value;
-        if (shown <= 0.01f || !model.has_track)
-            return;
-        const ui::Fonts &fonts = context_.fonts;
-        const Rect bar{kMiniBar.x + 30.0f * (1.0f - shown), kMiniBar.y, kMiniBar.w, kMiniBar.h};
-        list.push_opacity(shown);
-        list.shadow({bar.x, bar.y + 10, bar.w, bar.h}, 18, 30, Color::rgb(0x000000, 0.5f));
-        list.rounded_rect(bar, 18, Color::rgb(0x0b0d16, 0.82f));
-        list.bordered_rect(bar, 18, Color::rgb(0x000000, 0.0f), 1.5f, kWhite.with_alpha(0.14f));
-        const Rect cover{bar.x + 10, bar.y + 10, bar.h - 20, bar.h - 20};
-        if (model.track.art)
-            list.image(model.track.art, cover, gfx::kFullUv, kWhite, 8);
-        else
-            list.rounded_rect(cover, 8, kWhite.with_alpha(0.1f));
-        const float x = cover.x + cover.w + 18;
-        const float width = bar.w - (x - bar.x) - 70;
-        ui::text(list, fonts.semibold, fonts.semibold.font->fit(model.track.title, 22, width), x,
-                 bar.y + 29, 22, kWhite);
-        ui::text(list, fonts.regular, fonts.regular.font->fit(model.track.artist, 19, width), x,
-                 bar.y + 53, 19, kWhite.with_alpha(0.65f));
-        // Play state at the right; progress as a hairline along the bottom.
-        const float px = bar.x + bar.w - 40;
-        if (model.paused)
-            list.triangle({px - 9, bar.cy() - 10, 18, 20}, kWhite, 0.0f, 1.5708f);
-        else
-        {
-            list.rounded_rect({px - 8, bar.cy() - 10, 6, 20}, 2, kWhite);
-            list.rounded_rect({px + 3, bar.cy() - 10, 6, 20}, 2, kWhite);
-        }
-        if (model.track.duration_ms > 0)
-        {
-            const float done = std::min(1.0f, static_cast<float>(model.position_ms) /
-                                                  static_cast<float>(model.track.duration_ms));
-            list.rounded_rect({bar.x + 18, bar.y + bar.h - 5, (bar.w - 36) * done, 3}, 1.5f,
-                              accent());
-        }
-        list.pop_opacity();
-    }
-
     // R3: a frosted dialog over Home while the new one is fetched.
     void draw_refreshing(gfx::DrawList &list, std::uint32_t glass) const
     {
@@ -667,7 +618,6 @@ class Home final : public Screen
     bool seen_loading_ = false; // ... and the fetch has started
     float refresh_age_ = 0.0f;
     tween::Spring dialog_;
-    tween::Spring mini_;
 };
 
 } // namespace

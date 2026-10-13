@@ -4,7 +4,11 @@
 //
 // Adapted from ps5-opengl native-app/app_heap.c. tools/build.sh links with
 // --wrap for the malloc family whenever this file exists, routing allocations
-// into a fixed 128 MiB sceLibcMspace that is never unmapped.
+// into a fixed sceLibcMspace that is never unmapped.
+//
+// ps5-spotify: the size is the largest of kHeapSizes the console grants while
+// leaving kHeadroom for everything that maps memory itself (thread stacks,
+// the GL runtime); 128 MiB was the kit's fixed choice.
 
 #include <errno.h>
 #include <stdatomic.h>
@@ -29,7 +33,9 @@ int sceLibcMspacePosixMemalign(void *mspace, void **address, size_t alignment, s
 size_t sceLibcMspaceMallocUsableSize(const void *address);
 
 /* Fixed, process-lifetime heap: do not unmap underneath late C++ destructors. */
-#define HUI_HEAP_SIZE (128u * 1024u * 1024u)
+static const size_t kHeapSizes[] = {512u << 20, 384u << 20, 256u << 20, 128u << 20};
+static const size_t kHeadroom = 64u << 20;
+static size_t hui_heap_size;
 
 static atomic_int hui_heap_state;
 static void *hui_heap_base;
@@ -81,7 +87,20 @@ static int hui_heap_ready(void)
                                                  memory_order_acq_rel, memory_order_acquire))
         return expected == 2;
 
-    void *base = mmap(NULL, HUI_HEAP_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
+    // The first size that also leaves the headroom free (probed by mapping
+    // both, then giving the headroom back; this runs before any thread).
+    void *base = MAP_FAILED;
+    for (size_t i = 0; i < sizeof(kHeapSizes) / sizeof(kHeapSizes[0]) && base == MAP_FAILED; ++i)
+    {
+        const size_t size = kHeapSizes[i];
+        void *probe = mmap(NULL, size + kHeadroom, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
+        if (probe == MAP_FAILED)
+            continue;
+        munmap(probe, size + kHeadroom);
+        base = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
+        if (base != MAP_FAILED)
+            hui_heap_size = size;
+    }
     if (base == MAP_FAILED)
     {
         atomic_store_explicit(&hui_heap_state, -1, memory_order_release);
@@ -89,11 +108,11 @@ static int hui_heap_ready(void)
     }
 
     hui_heap_base = base;
-    hui_heap_mspace = sceLibcMspaceCreate("ps5-homebrew-ui", base, HUI_HEAP_SIZE, 0);
+    hui_heap_mspace = sceLibcMspaceCreate("ps5-homebrew-ui", base, hui_heap_size, 0);
     if (hui_heap_mspace == NULL)
     {
         hui_heap_base = NULL;
-        munmap(base, HUI_HEAP_SIZE);
+        munmap(base, hui_heap_size);
         atomic_store_explicit(&hui_heap_state, -1, memory_order_release);
         return 0;
     }
@@ -109,7 +128,7 @@ static int hui_heap_owns(const void *address)
         return 0;
     uintptr_t value = (uintptr_t)address;
     uintptr_t base = (uintptr_t)hui_heap_base;
-    return value >= base && value - base < HUI_HEAP_SIZE;
+    return value >= base && value - base < hui_heap_size;
 }
 
 void *__wrap_malloc(size_t size)
@@ -172,6 +191,12 @@ size_t __wrap_malloc_usable_size(const void *address)
 {
     return hui_heap_owns(address) ? sceLibcMspaceMallocUsableSize(address)
                                   : __real_malloc_usable_size(address);
+}
+
+/* The heap's size (0 before the first allocation or if it could not be made). */
+size_t hui_heap_capacity(void)
+{
+    return hui_heap_size;
 }
 
 /* Diagnostics: current heap counters for logs and the diagnostics screen. */

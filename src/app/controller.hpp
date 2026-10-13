@@ -67,6 +67,7 @@ struct Status
     int artwork_done = 0; // reported by the app while Step::artwork
     int artwork_total = 0;
     std::string notice; // see screens::Model::notice
+    std::string busy;   // see screens::Model::busy
     std::uint32_t notice_id = 0;
 };
 
@@ -113,6 +114,16 @@ class Controller
     void step_queue();
     void refresh_home(const char *why);
     void set_notice(const std::string &text);
+    // The busy pill: what is under way, and what ends it.
+    enum class Until
+    {
+        track_change, // a new track reaches the player
+        restart,      // a new track, or this one back at its start
+        page_loaded,  // the open page has its track list
+    };
+    void set_busy(const std::string &text, Until until);
+    void step_busy();
+    std::string title_of(const std::string &uri);
 
     // Controller thread only.
     std::unique_ptr<spotify::Session> session_;
@@ -133,6 +144,10 @@ class Controller
     std::vector<std::string> queue_uris_;
     int queue_index_ = -1;
     bool queue_dirty_ = false;
+    // Busy pill (controller thread).
+    Until busy_until_ = Until::track_change;
+    std::string busy_track_; // the track playing when it began
+    std::int64_t busy_since_ms_ = 0;
 
     screens::Settings settings_; // what the session runs with (controller thread)
 

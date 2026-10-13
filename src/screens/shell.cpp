@@ -165,8 +165,32 @@ void Shell::update(const Model &model, const InputFrame &input, float dt, ui::Fe
             feedback.play(audio::Cue::error, 1.0f, 0.0f, 0.6f);
     }
     notice_age_ += dt;
-    reconnecting_.target = model.connection == Connection::reconnecting ? 1.0f : 0.0f;
-    reconnecting_.update(dt, 10.0f);
+    // ---- top bar: now-playing bar and the status pill ----
+    const bool hub = current_ == Id::home || current_ == Id::page;
+    mini_.target = hub && model.has_track && !menu_open_ ? 1.0f : 0.0f;
+    mini_.update(dt, 9.0f);
+    std::string status;
+    if (model.connection == Connection::reconnecting)
+        status = "Reconnecting";
+    else if (!model.busy.empty())
+        status = model.busy;
+    else if (model.home_loading && hub)
+        status = "Updating Home";
+    if (current_ == Id::launch)
+        status.clear(); // the loader says it all
+    if (!status.empty() && status != status_text_)
+    {
+        status_previous_ = status_text_;
+        status_text_ = status;
+        status_swap_.start(context_.settings.reduced_motion ? 0.1f : 0.32f);
+    }
+    status_shown_.target = status.empty() ? 0.0f : 1.0f;
+    status_shown_.update(dt, 10.0f);
+    status_width_.target = 92.0f + context_.fonts.semibold.measure(status_text_, 22);
+    if (status_shown_.value < 0.02f)
+        status_width_.snap(status_width_.target);
+    status_width_.update(dt, 14.0f);
+    status_swap_.update(dt);
 }
 
 void Shell::record(Frame &frame, Id id, const Model &model, float opacity, float dx, float scale)
@@ -276,21 +300,68 @@ void Shell::draw_overlays(gfx::DrawList &list, const Model &model)
 {
     const ui::Fonts &fonts = context_.fonts;
 
-    // "Reconnecting": a pill in the top-right corner while cspot retries.
-    const float shown = tween::clamp01(reconnecting_.value);
-    if (shown > 0.01f && current_ != Id::launch)
+    // ---- the now-playing bar, top right (Home and pages) ----
+    const gfx::Rect bar{1740 - 26 - 560 + 30.0f * (1.0f - mini_.value), 50, 560, 64};
+    if (mini_.value > 0.01f && model.has_track)
     {
-        const char *label = "Reconnecting\xE2\x80\xA6";
-        const float w = 74.0f + fonts.semibold.measure(label, 22);
-        const gfx::Rect pill{kRight - w + 30.0f * (1.0f - shown), 72, w, 52};
+        list.push_opacity(mini_.value);
+        list.shadow({bar.x, bar.y + 10, bar.w, bar.h}, 18, 30, Color::rgb(0x000000, 0.5f));
+        list.rounded_rect(bar, 18, kNight.with_alpha(0.82f));
+        list.bordered_rect(bar, 18, kClear, 1.5f, kInk.with_alpha(0.14f));
+        const gfx::Rect cover{bar.x + 10, bar.y + 10, bar.h - 20, bar.h - 20};
+        if (model.track.art)
+            list.image(model.track.art, cover, gfx::kFullUv, kInk, 8);
+        else
+            list.rounded_rect(cover, 8, kInk.with_alpha(0.1f));
+        const float x = cover.x + cover.w + 18;
+        const float width = bar.w - (x - bar.x) - 70;
+        ui::text(list, fonts.semibold, fonts.semibold.font->fit(model.track.title, 22, width), x, bar.y + 29, 22, kInk);
+        ui::text(list, fonts.regular, fonts.regular.font->fit(model.track.artist, 19, width), x, bar.y + 53, 19,
+                 kInk.with_alpha(0.65f));
+        // Play state at the right; progress as a hairline along the bottom.
+        const float px = bar.x + bar.w - 40;
+        if (model.paused)
+            list.triangle({px - 9, bar.cy() - 10, 18, 20}, kInk, 0.0f, 1.5708f);
+        else
+        {
+            list.rounded_rect({px - 8, bar.cy() - 10, 6, 20}, 2, kInk);
+            list.rounded_rect({px + 3, bar.cy() - 10, 6, 20}, 2, kInk);
+        }
+        if (model.track.duration_ms > 0)
+        {
+            const float done =
+                std::min(1.0f, static_cast<float>(model.position_ms) / static_cast<float>(model.track.duration_ms));
+            list.rounded_rect({bar.x + 18, bar.y + bar.h - 5, (bar.w - 36) * done, 3}, 1.5f, kGreen);
+        }
+        list.pop_opacity();
+    }
+
+    // ---- the status pill: what is under way ----
+    const float shown = tween::clamp01(status_shown_.value);
+    if (shown > 0.01f)
+    {
+        // Left of the now-playing bar, else left of Home's account initial,
+        // else in the corner.
+        const float right = mini_.value > 0.5f ? bar.x - 16 : current_ == Id::home ? 1758.0f : kRight;
+        const float w = status_width_.value;
+        const gfx::Rect pill{right - w + 24.0f * (1.0f - shown), 56, w, 52};
         list.push_opacity(shown);
         list.shadow({pill.x, pill.y + 8, pill.w, pill.h}, 26, 24, Color::rgb(0x000000, 0.35f));
-        list.rounded_rect(pill, 26, kNight.with_alpha(0.7f));
+        list.rounded_rect(pill, 26, kNight.with_alpha(0.78f));
         list.bordered_rect(pill, 26, kClear, 1.5f, kInk.with_alpha(0.16f));
-        list.arc(pill.x + 32, pill.cy(), 10, 3, clock_ * 5.5f, 2.2f, kGreen);
-        ui::text(list, fonts.semibold, label, pill.x + 54, pill.cy() + 8, 22, kInk);
+        list.arc(pill.x + 32, pill.cy(), 11, 3, 0.0f, kTau, kInk.with_alpha(0.12f));
+        list.arc(pill.x + 32, pill.cy(), 11, 3, clock_ * 5.5f, 2.2f, kGreen);
+        // A new verb slides up into place as the old one leaves.
+        list.push_clip({pill.x + 50, pill.y, pill.w - 60, pill.h});
+        const float t = status_swap_.running ? tween::cubic_out(status_swap_.progress()) : 1.0f;
+        const std::string ellipsis = "\xE2\x80\xA6";
+        if (t < 1.0f && !status_previous_.empty())
+            ui::text(list, fonts.semibold, status_previous_ + ellipsis, pill.x + 56, pill.cy() + 8 - 22.0f * t, 22,
+                     kInk.with_alpha(1.0f - t));
+        ui::text(list, fonts.semibold, status_text_ + ellipsis, pill.x + 56, pill.cy() + 8 + 22.0f * (1.0f - t), 22,
+                 kInk.with_alpha(t));
+        list.pop_clip();
         list.pop_opacity();
-        (void)model;
     }
 
     // A short message from the app ("This can't be played here yet").
