@@ -1,30 +1,35 @@
-// ps5-spotify - Console network test: bell + mbedTLS + DNS on the PS5.
+// ps5-spotify - Console login test: cspot logs in from saved credentials.
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// Runs the first network steps cspot takes, each logged ([NET] lines in the
-// app log and klog):
-//   1. DNS: getaddrinfo (our sceNetResolver version) for apresolve.spotify.com
-//   2. HTTPS GET apresolve.spotify.com (bell HTTPClient, TLS verified against
-//      the bundled roots), which lists Spotify's access points
-//   3. plain TCP connect to the first access point (cspot's next step)
-//   4. two TLS connections that MUST fail (wrong host name, self-signed), to
-//      prove certificate verification is on
-// Then the app closes itself.
-
-#include <arpa/inet.h>
-#include <netdb.h>
+// Milestone before audio: prove the account side of cspot on the PS5.
+//   1. read /app0/config.json ({"client_id": "..."}) and
+//      /app0/cspot-creds.json (saved by cspotcli -c on the PC)
+//   2. connect to a Spotify access point and authenticate (Shannon session)
+//   3. fetch one track's metadata over Mercury
+//   4. get a Web API access token via login5 (client token + hashcash)
+// Each step is logged ([LOGIN] lines in the app log and klog). Secrets are
+// never logged, only their sizes.
 
 #include <cstdarg>
 #include <cstdio>
 #include <cstring>
 #include <exception>
+#include <fstream>
+#include <memory>
+#include <sstream>
 #include <string>
 #include <vector>
 
+#include "AccessKeyFetcher.h"
 #include "BellLogger.h"
-#include "HTTPClient.h"
-#include "TCPSocket.h"
+#include "CSpotContext.h"
+#include "LoginBlob.h"
+#include "MercurySession.h"
+#include "WrappedSemaphore.h"
 #include "X509Bundle.h"
+#include "nlohmann/json.hpp"
+#include "pb_decode.h"
+#include "protobuf/metadata.pb.h"
 
 extern "C"
 {
@@ -35,6 +40,9 @@ extern "C"
 
 namespace
 {
+
+// A public track (used in Spotify's API docs): base62 4uLU6hMCjMI75M1A2tKUQC.
+constexpr const char *kTrackGid = "93bc414a606747b2b612491ef83d5a3e";
 
 void trace(const char *format, ...) __attribute__((format(printf, 1, 2)));
 void trace(const char *format, ...)
@@ -49,47 +57,86 @@ void trace(const char *format, ...)
     sceKernelDebugOutText(0, line);
 }
 
-std::vector<uint8_t> read_file(const char *path)
+std::string read_text(const char *path)
 {
-    std::vector<uint8_t> data;
-    FILE *f = std::fopen(path, "rb");
-    if (!f)
-        return data;
-    uint8_t buf[16384];
-    std::size_t n;
-    while ((n = std::fread(buf, 1, sizeof(buf), f)) > 0)
-        data.insert(data.end(), buf, buf + n);
-    std::fclose(f);
-    return data;
-}
-
-// Fetches url; returns the body, or "" after logging the error.
-std::string https_get(const char *name, const std::string &url)
-{
-    try
-    {
-        auto response = bell::HTTPClient::get(url);
-        auto body = response->body();
-        trace("[NET] %s: OK, %zu bytes", name, body.size());
-        return std::string(body);
-    }
-    catch (const std::exception &error)
-    {
-        trace("[NET] %s: FAILED (%s)", name, error.what());
-        return "";
-    }
+    std::ifstream file(path);
+    std::ostringstream text;
+    text << file.rdbuf();
+    return text.str();
 }
 
 [[noreturn]] void quit()
 {
     // The log is readable over FTP only while the title runs.
-    trace("[NET] all tests finished; closing in 60 s");
+    trace("[LOGIN] finished; closing in 60 s");
     sceKernelUsleep(60000000);
     std::fflush(nullptr);
     int refused = sceSystemServiceLoadExec("exit", nullptr);
-    trace("[NET] quit refused rc=0x%x", static_cast<unsigned>(refused));
+    trace("[LOGIN] quit refused rc=0x%x", static_cast<unsigned>(refused));
     for (;;)
         sceKernelUsleep(100000);
+}
+
+void run()
+{
+    auto bundle = read_text("/app0/assets/x509_bundle.bin");
+    bell::X509Bundle::init(reinterpret_cast<const uint8_t *>(bundle.data()), bundle.size());
+
+    // 1. Config and saved login, both supplied on the console only.
+    auto config = nlohmann::json::parse(read_text("/app0/config.json"), nullptr, false);
+    std::string creds = read_text("/app0/cspot-creds.json");
+    if (config.is_discarded() || !config.contains("client_id") || creds.empty())
+    {
+        trace("[LOGIN] step1: missing or invalid /app0/config.json or /app0/cspot-creds.json");
+        return;
+    }
+    auto blob = std::make_shared<cspot::LoginBlob>("PS5");
+    blob->loadJson(creds);
+    auto ctx = cspot::Context::createFromBlob(blob);
+    ctx->config.clientId = config["client_id"].get<std::string>();
+    trace("[LOGIN] step1: config + creds loaded (user name %zu chars)",
+          ctx->config.username.size());
+
+    // 2. Access point + authentication
+    ctx->session->connectWithRandomAp();
+    ctx->config.authData = ctx->session->authenticate(blob);
+    if (ctx->config.authData.empty())
+    {
+        trace("[LOGIN] step2: authentication FAILED");
+        return;
+    }
+    trace("[LOGIN] step2: authenticated (reusable credential %zu bytes)",
+          ctx->config.authData.size());
+    ctx->session->startTask();
+
+    // 3. Track metadata over Mercury
+    auto done = std::make_shared<bell::WrappedSemaphore>(0);
+    std::string name;
+    ctx->session->execute(cspot::MercurySession::RequestType::GET,
+                          std::string("hm://metadata/3/track/") + kTrackGid,
+                          [&name, done](cspot::MercurySession::Response &res) {
+                              if (!res.parts.empty())
+                              {
+                                  Track track = Track_init_zero;
+                                  pb_istream_t stream = pb_istream_from_buffer(
+                                      res.parts[0].data(), res.parts[0].size());
+                                  if (pb_decode(&stream, Track_fields, &track) && track.name)
+                                      name = track.name;
+                                  pb_release(Track_fields, &track);
+                              }
+                              done->give();
+                          });
+    if (done->twait(15000) != 0)
+        trace("[LOGIN] step3: metadata TIMEOUT");
+    else
+        trace("[LOGIN] step3: metadata %s (track name: %s)", name.empty() ? "FAILED" : "OK",
+              name.c_str());
+
+    // 4. login5 access token
+    cspot::AccessKeyFetcher fetcher(ctx);
+    std::string token = fetcher.getAccessKey();
+    trace("[LOGIN] step4: access token %s (%zu chars)", token.empty() ? "FAILED" : "OK",
+          token.size());
 }
 
 } // namespace
@@ -106,7 +153,7 @@ inline namespace __1
     va_start(arguments, format);
     std::vfprintf(stdout, format, arguments);
     va_end(arguments);
-    trace("[NET] libc++ abort");
+    trace("[LOGIN] libc++ abort");
     for (;;)
         sceKernelUsleep(100000);
 }
@@ -115,75 +162,15 @@ inline namespace __1
 
 int main()
 {
-    trace("[NET] network test start");
+    trace("[LOGIN] login test start");
     bell::setDefaultLogger();
-
-    auto bundle = read_file("/app0/assets/x509_bundle.bin");
     try
     {
-        bell::X509Bundle::init(bundle.data(), bundle.size());
-        trace("[NET] cert bundle: %zu bytes, verify=%d", bundle.size(),
-              bell::X509Bundle::shouldVerify());
+        run();
     }
     catch (const std::exception &error)
     {
-        trace("[NET] cert bundle: FAILED (%s); stopping, TLS would be unverified",
-              error.what());
-        quit();
+        trace("[LOGIN] FAILED with exception: %s", error.what());
     }
-
-    // 1. DNS
-    addrinfo hints{};
-    hints.ai_family = AF_INET;
-    hints.ai_socktype = SOCK_STREAM;
-    addrinfo *result = nullptr;
-    int rc = getaddrinfo("apresolve.spotify.com", "443", &hints, &result);
-    if (rc == 0 && result)
-    {
-        char ip[INET_ADDRSTRLEN] = "?";
-        inet_ntop(AF_INET, &reinterpret_cast<sockaddr_in *>(result->ai_addr)->sin_addr, ip,
-                  sizeof(ip));
-        trace("[NET] test1 dns apresolve.spotify.com: %s", ip);
-        freeaddrinfo(result);
-    }
-    else
-        trace("[NET] test1 dns: FAILED rc=%d", rc);
-
-    // 2. HTTPS, verified
-    std::string body =
-        https_get("test2 https apresolve", "https://apresolve.spotify.com/?type=accesspoint");
-    trace("[NET] test2 body: %.200s", body.c_str());
-
-    // 3. TCP to the first access point, e.g. "ap-gew4.spotify.com:4070"
-    std::size_t start = body.find("\"ap");
-    std::size_t colon = body.find(':', start);
-    std::size_t end = body.find('"', start + 1);
-    if (start != std::string::npos && colon < end && end != std::string::npos)
-    {
-        std::string host = body.substr(start + 1, colon - start - 1);
-        int port = std::stoi(body.substr(colon + 1, end - colon - 1));
-        try
-        {
-            bell::TCPSocket socket;
-            socket.open(host, port);
-            trace("[NET] test3 tcp %s:%d: connected", host.c_str(), port);
-            socket.close();
-        }
-        catch (const std::exception &error)
-        {
-            trace("[NET] test3 tcp %s:%d: FAILED (%s)", host.c_str(), port, error.what());
-        }
-    }
-    else
-        trace("[NET] test3 tcp: no access point in test2 body");
-
-    // 4. Must fail: proves bad certificates are rejected
-    bool wrong_host = https_get("test4a bad host name (must FAIL)",
-                                "https://wrong.host.badssl.com/")
-                          .empty();
-    bool self_signed =
-        https_get("test4b self-signed (must FAIL)", "https://self-signed.badssl.com/").empty();
-    trace("[NET] test4 verification %s", wrong_host && self_signed ? "WORKS" : "BROKEN");
-
     quit();
 }

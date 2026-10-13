@@ -37,11 +37,17 @@ export root sdk_root
 mbedtls_flags=(-std=c11 -O2 -w -ffunction-sections -fdata-sections
     -D__unix__ "-DMBEDTLS_USER_CONFIG_FILE=\"$root/src/platform/mbedtls_ps5_config.h\""
     -I"$mbedtls/include")
+cspot="$root/../cspot/cspot"
+gen="$out/proto"
+common_defs=(-DBELL_DISABLE_FMT -DBELL_DISABLE_REGEX -DPB_ENABLE_MALLOC -DPB_FIELD_32BIT
+    "-DMBEDTLS_USER_CONFIG_FILE=\"$root/src/platform/mbedtls_ps5_config.h\"")
+includes=(-I"$mbedtls/include" -I"$bell/main/io/include" -I"$bell/main/utilities/include"
+    -I"$bell/main/platform" -I"$bell/external/nanopb" -I"$bell/external/nlohmann_json/include"
+    -I"$cspot/include" -I"$gen")
 bell_flags=(-std=c++17 -O2 -w -fexceptions -frtti -ffunction-sections -fdata-sections
-    -DBELL_DISABLE_FMT -DBELL_DISABLE_REGEX
-    "-DMBEDTLS_USER_CONFIG_FILE=\"$root/src/platform/mbedtls_ps5_config.h\""
-    -I"$mbedtls/include" -I"$bell/main/io/include" -I"$bell/main/utilities/include"
-    -I"$bell/main/platform")
+    "${common_defs[@]}" "${includes[@]}")
+bell_c_flags=(-std=c11 -O2 -w -ffunction-sections -fdata-sections
+    "${common_defs[@]}" "${includes[@]}")
 
 # Compiles $3.. into objects under $1 with the flags in array named $2.
 compile() {
@@ -65,6 +71,11 @@ compile() {
 compile "$out/mbedtls" mbedtls_flags "$mbedtls"/library/*.c
 rm -f "$out/libmbedtls.a" && llvm-ar rcs "$out/libmbedtls.a" "$out"/mbedtls/*.o
 
+# nanopb C files from cspot's .proto files (same generator as the PC build).
+rm -rf "$gen" && mkdir -p "$gen/protobuf"
+(cd "$cspot" && "$root/../cspot/.venv312/bin/python" "$bell/external/nanopb/generator/nanopb_generator.py" \
+    -q -D "$gen" protobuf/*.proto)
+
 bell_sources=(
     "$bell/main/io/TLSSocket.cpp"
     "$bell/main/io/SocketStream.cpp"
@@ -73,9 +84,19 @@ bell_sources=(
     "$bell/main/io/X509Bundle.cpp"
     "$bell/main/utilities/BellLogger.cpp"
     "$bell/main/utilities/BellUtils.cpp"
+    "$bell/main/utilities/Crypto.cpp"
+    "$bell/main/utilities/NanoPBHelper.cpp"
+    "$bell/main/utilities/NanoPBExtensions.cpp"
+    "$bell/main/platform/linux/WrappedSemaphore.cpp"
 )
+# ponytail: login + Mercury only; playback files join with the audio layer.
+for name in AccessKeyFetcher ApResolve AuthChallenges LoginBlob MercurySession \
+    PlainConnection Session ShannonConnection Shannon TimeProvider Utils; do
+    bell_sources+=("$cspot/src/$name.cpp")
+done
 compile "$out/bell" bell_flags "${bell_sources[@]}"
-bell_c_flags=(-std=c11 -O2 -w -ffunction-sections -fdata-sections -I"$bell/main/io/include")
-compile "$out/bell-c" bell_c_flags "$bell/main/io/picohttpparser.c"
+compile "$out/bell-c" bell_c_flags "$bell/main/io/picohttpparser.c" "$bell/main/utilities/aes.c" \
+    "$bell/external/nanopb/pb_common.c" "$bell/external/nanopb/pb_decode.c" \
+    "$bell/external/nanopb/pb_encode.c" "$gen"/protobuf/*.pb.c
 rm -f "$out/libbell.a" && llvm-ar rcs "$out/libbell.a" "$out"/bell/*.o "$out"/bell-c/*.o
 echo "deps: $out/libmbedtls.a $out/libbell.a"
