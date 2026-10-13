@@ -58,9 +58,9 @@ class CoverLoader
     // A finished cover, once each; empty while nothing new is ready.
     std::optional<Cover> take();
 
-    // Larger than this is halved before upload. 2048 keeps the original
-    // album art (~2000 px) whole, for big canvases drawn at 4K.
-    static constexpr int kMaxSide = 2048;
+    // Larger than this is halved before upload. 2880 keeps original album
+    // art (~2000 px) and Spotify's wide banners (2660 px) whole for 4K.
+    static constexpr int kMaxSide = 2880;
 
     // True once this cover will not come (cannot be decoded, or its download
     // failed moments ago): a launch screen waiting for covers stops counting it.

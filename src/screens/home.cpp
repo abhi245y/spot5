@@ -156,14 +156,14 @@ class Home final : public Screen
         gfx::DrawList &list = frame.scene;
         const float back = dialog_.value;
         list.push_transform(1.0f - 0.035f * back, 960, 540, 0, 0);
-        draw_top_bar(list, model);
         if (shelves().empty())
             draw_empty(list, model);
         else
         {
-            draw_hero(list);
+            draw_hero(list); // a wide banner sits under the top bar
             draw_shelves(list);
         }
+        draw_top_bar(list, model);
         // A soft scrim under the bottom row: the shelf peeking in below stays
         // a hint and never fights the now-playing bar or the button hints.
         list.gradient_rect({0, 900, gfx::kVirtualWidth, gfx::kVirtualHeight - 900}, 0,
@@ -447,14 +447,22 @@ class Home final : public Screen
         const Card &card = hero.card;
         list.push_opacity(alpha);
 
+        // Landscape art when Spotify has it: a full-bleed banner behind the
+        // text (the square cover then steps aside).
+        const Art wide = art(card.wide);
+        if (wide.texture)
+            draw_banner(list, wide, slide);
         const float bob = context_.settings.reduced_motion ? 0.0f : std::sin(clock_ * 0.8f) * 6.0f;
         const Rect cover{kHeroArt.x + slide * 1.6f, kHeroArt.y + bob, kHeroArt.w, kHeroArt.h};
-        list.glow(cover.inset(30), 60, 90, accent().with_alpha(0.3f));
-        list.shadow({cover.x, cover.y + 26, cover.w, cover.h}, 36, 46, Color::rgb(0x000000, 0.55f));
-        const Art large = art(card.image_large);
-        draw_cover(list, card, large.texture ? card.image_large : card.image, cover, 36, 1.0f);
-        if (!card.round)
-            list.bordered_rect(cover, 36, Color::rgb(0x000000, 0.0f), 2, kWhite.with_alpha(0.16f));
+        if (!wide.texture)
+        {
+            list.glow(cover.inset(30), 60, 90, accent().with_alpha(0.3f));
+            list.shadow({cover.x, cover.y + 26, cover.w, cover.h}, 36, 46, Color::rgb(0x000000, 0.55f));
+            const Art large = art(card.image_large);
+            draw_cover(list, card, large.texture ? card.image_large : card.image, cover, 36, 1.0f);
+            if (!card.round)
+                list.bordered_rect(cover, 36, Color::rgb(0x000000, 0.0f), 2, kWhite.with_alpha(0.16f));
+        }
 
         const float x = kMargin + slide;
         ui::text(list, fonts.semibold, ui::upper(hero.shelf.empty() ? "Shortcuts" : hero.shelf), x, 212,
@@ -465,6 +473,34 @@ class Home final : public Screen
         ui::paragraph(list, fonts.regular, plain_text(card.description), x, 414, 28, kHeroTextWidth - 200,
                       40, kWhite.with_alpha(0.86f), 2);
         list.pop_opacity();
+    }
+
+    // The wide art across the top, cropped to fill, fading into the
+    // backdrop below and darkened on the left where the title sits.
+    void draw_banner(gfx::DrawList &list, const Art &wide, float slide) const
+    {
+        constexpr float kBannerH = 860.0f;
+        const float target = gfx::kVirtualWidth / kBannerH;
+        const float aspect = wide.height > 0 ? static_cast<float>(wide.width) / static_cast<float>(wide.height) : target;
+        Rect uv{0, 0, 1, 1};
+        if (aspect > target)
+        {
+            uv.w = target / aspect;
+            uv.x = (1.0f - uv.w) * 0.5f;
+        }
+        else
+        {
+            uv.h = aspect / target;
+            uv.y = (1.0f - uv.h) * 0.35f; // a little above centre: faces sit high
+        }
+        const float drift = context_.settings.reduced_motion ? 0.0f : std::sin(clock_ * 0.15f) * 12.0f;
+        const Rect r{-24.0f + slide * 0.4f + drift, -10.0f, gfx::kVirtualWidth + 48.0f, kBannerH + 20.0f};
+        // The image itself fades out at the bottom (no cover-up rectangle, so
+        // no edge against the moving backdrop).
+        list.image_gradient(wide.texture, r, uv, kWhite, kWhite.with_alpha(0.0f), 0.0f);
+        const Color base = palette_[0].value();
+        list.gradient_rect({0, 0, gfx::kVirtualWidth, 220}, 0, Color::rgb(0x000000, 0.45f), Color::rgb(0x000000, 0.0f));
+        list.gradient_rect_h({0, 0, 1300, kBannerH}, 0, base.with_alpha(0.85f), base.with_alpha(0.0f));
     }
 
     void draw_hero(gfx::DrawList &list) const

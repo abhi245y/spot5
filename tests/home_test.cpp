@@ -42,12 +42,14 @@ std::string identity(const std::string &uri, const std::string &type, const std:
     return msg(3, msg(2, uri) + msg(3, any));
 }
 
-std::string visual(const std::string &uri, const std::string &url300)
+std::string visual(const std::string &uri, const std::string &url300, const std::string &wide = {})
 {
     std::string image;
     pb::put_bytes_field(image, 1, msg(1, url300));
     pb::put_varint_field(image, 2, 2);
     std::string value = msg(1, msg(1, image));
+    if (!wide.empty())
+        value += msg(6, msg(1, msg(1, msg(1, wide))));
     std::string any = msg(1, "type.googleapis.com/spotify.contentagnostic.v2.VisualIdentityTrait") + msg(2, value);
     return msg(3, msg(2, uri) + msg(3, any));
 }
@@ -82,13 +84,15 @@ int main(int argc, char **argv)
 
     // Traits: titles and a 300 px image.
     std::string reply = msg(2, identity("spotify:playlist:p1", "Playlist", "Focus EDM Mix", "abhi245y") +
-                                   visual("spotify:playlist:p1", "https://i.scdn.co/image/p1-300")) +
+                                   visual("spotify:playlist:p1", "https://i.scdn.co/image/p1-300",
+                                          "https://i.scdn.co/image/p1-wide")) +
                         msg(2, identity("spotify:artist:a1", "Artist", "Abhiram Lolla", "") +
                                    identity("spotify:user:anonymized:collection", "Playlist", "Liked Songs", "abhi245y"));
     home::Entities entities;
     assert(home::parse_traits(reply, entities, 1000));
     assert(entities["spotify:playlist:p1"].title == "Focus EDM Mix");
     assert(entities["spotify:playlist:p1"].images[1] == "https://i.scdn.co/image/p1-300");
+    assert(entities["spotify:playlist:p1"].wide == "https://i.scdn.co/image/p1-wide");
 
     // Page: entries without metadata dropped, artists round, subtitles.
     screens::HomePage page = home::build_page(sections, entities);

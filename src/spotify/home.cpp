@@ -12,6 +12,9 @@ namespace spotify::home
 namespace
 {
 
+// home.json's format; bumped when entities gain fields (2: wide art).
+constexpr int kCacheVersion = 2;
+
 // Header title: 1 = plain string (shortcuts: ""), 2 = {1: text},
 // 3 = {1: template "More like {0}", 2..: {1: name, 2: uri, 3: image}}.
 std::string header_title(std::string_view header)
@@ -133,7 +136,21 @@ bool parse_traits(std::string_view reply, Entities &entities, std::int64_t now_m
             entity.fetched_ms = now_ms;
             if (type_url.find("VisualIdentityTrait") != std::string_view::npos)
             {
-                // 1 = {1: image {1: {1: url}, 2: size 1|2|3}}
+                // Landscape art (SPOTIFY_MOBILE_RESEARCH.md §13.8): 2 = 16:9
+                // cover, 6 = wide full-bleed (artist-style banner); each a
+                // group of {1: {1: url}, 2: size}; the last listed is largest.
+                for (std::uint32_t group : {2u, 6u})
+                {
+                    pb::Reader wide(pb::first(value, group));
+                    pb::Field image;
+                    while (wide.next(image))
+                        if (image.number == 1 && image.wire == 2)
+                            if (std::string_view url = pb::at(image.bytes, {1, 1}); !url.empty())
+                                entity.wide = std::string(url);
+                    if (!entity.wide.empty())
+                        break;
+                }
+                // 1 = square cover {1: image {1: {1: url}, 2: size 1|2|3}}
                 pb::Reader images(pb::first(value, 1));
                 pb::Field image;
                 while (images.next(image))
@@ -252,6 +269,7 @@ screens::HomePage build_page(const std::vector<Section> &sections, const Entitie
             card.description = entity.description;
             card.image = !entity.images[1].empty() ? entity.images[1] : entity.images[2];
             card.image_large = larger_cover(!entity.images[2].empty() ? entity.images[2] : card.image);
+            card.wide = entity.wide;
             card.round = entity.type == "Artist";
             shelf.cards.push_back(std::move(card));
         }
@@ -272,6 +290,7 @@ std::string to_json(const std::vector<Section> &sections, const Entities &entiti
                     std::int64_t fetched_ms)
 {
     nlohmann::json json;
+    json["version"] = kCacheVersion;
     json["fetched_ms"] = fetched_ms;
     json["sections"] = nlohmann::json::array();
     for (const Section &section : sections)
@@ -284,6 +303,7 @@ std::string to_json(const std::vector<Section> &sections, const Entities &entiti
                                  {"description", e.description},
                                  {"owner", e.owner},
                                  {"images", {e.images[0], e.images[1], e.images[2]}},
+                                 {"wide", e.wide},
                                  {"fetched_ms", e.fetched_ms}};
     return json.dump();
 }
@@ -292,8 +312,8 @@ bool from_json(const std::string &text, std::vector<Section> &sections, Entities
                std::int64_t &fetched_ms)
 {
     const auto json = nlohmann::json::parse(text, nullptr, false);
-    if (json.is_discarded() || !json.is_object())
-        return false;
+    if (json.is_discarded() || !json.is_object() || json.value("version", 0) != kCacheVersion)
+        return false; // an older format: fetch everything again
     try
     {
         fetched_ms = json.value("fetched_ms", std::int64_t{0});
@@ -312,6 +332,7 @@ bool from_json(const std::string &text, std::vector<Section> &sections, Entities
             for (int i = 0; i < 3; ++i)
                 entity.images[i] = e.at("images").at(static_cast<std::size_t>(i)).get<std::string>();
             entity.fetched_ms = e.at("fetched_ms").get<std::int64_t>();
+            entity.wide = e.value("wide", std::string());
         }
     }
     catch (const nlohmann::json::exception &)

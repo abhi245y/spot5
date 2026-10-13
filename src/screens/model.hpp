@@ -60,6 +60,7 @@ struct Card
     std::string description; // longer text for the details sheet; may be empty
     std::string image;       // ~300 px cover, for cards
     std::string image_large; // ~640 px cover, for the hero and details
+    std::string wide;        // landscape art (~2660x1140 or 16:9) when Spotify has it; empty if not
     bool round = false;      // artists are drawn in a circle, as on the phone
 };
 

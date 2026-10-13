@@ -200,7 +200,7 @@ screens::Art preview_art(const std::string &url)
         if (std::uint8_t *px = stbi_load_from_memory(reinterpret_cast<const std::uint8_t *>(data.data()),
                                                      static_cast<int>(data.size()), &w, &h, &n, 4))
         {
-            art = {g_renderer->batch().create_texture(w, h, px), screens::style::palette_from_pixels(px, w, h)};
+            art = {g_renderer->batch().create_texture(w, h, px), screens::style::palette_from_pixels(px, w, h), w, h};
             stbi_image_free(px);
         }
     }

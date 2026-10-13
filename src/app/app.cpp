@@ -258,6 +258,8 @@ class CardArt
                 glDeleteTextures(1, &entry.texture);
             entry.texture = renderer_.batch().create_texture(cover->width, cover->height, cover->rgba.data());
             entry.palette = cover->palette;
+            entry.width = cover->width;
+            entry.height = cover->height;
             entry.used = frame_;
             entry.bytes = cover->rgba.size();
             bytes_ += entry.bytes;
@@ -285,7 +287,7 @@ class CardArt
             return {};
         }
         found->second.used = frame_;
-        return {found->second.texture, found->second.palette};
+        return {found->second.texture, found->second.palette, found->second.width, found->second.height};
     }
 
     // Forgets every cover (Clear cache): they load again when drawn. Safe
@@ -323,6 +325,8 @@ class CardArt
         screens::style::AlbumPalette palette;
         std::uint64_t used = 0;
         std::size_t bytes = 0;
+        int width = 0;
+        int height = 0;
     };
     gfx::Renderer &renderer_;
     // Long queue (the whole page at launch), six downloads at a time (each

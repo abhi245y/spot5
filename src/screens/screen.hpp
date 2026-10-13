@@ -49,6 +49,8 @@ struct Art
 {
     std::uint32_t texture = 0;
     style::AlbumPalette palette;
+    int width = 0; // pixels, for cropping (wide art into a banner)
+    int height = 0;
 };
 
 // Long-lived things every screen needs.

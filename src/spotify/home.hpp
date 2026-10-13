@@ -41,6 +41,7 @@ struct Entity
     std::string description;
     std::string owner;
     std::string images[3]; // small (64), medium (300), large (640); any may be empty
+    std::string wide;      // the largest landscape image (16:9 cover or wide full-bleed)
     std::int64_t fetched_ms = 0;
 };
 using Entities = std::map<std::string, Entity>;
