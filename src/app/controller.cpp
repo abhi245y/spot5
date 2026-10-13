@@ -143,8 +143,10 @@ void Controller::handle_commands()
         case Command::forget_login:
             // Delete the saved login and end the session; connecting again
             // then finds nothing saved and waits for the phone (Pairing).
-            std::remove(paths::kCredentials.c_str());
-            hui::sys::log("[APP] saved login forgotten");
+            if (std::remove(paths::kCredentials.c_str()) == 0)
+                hui::sys::log("[APP] saved login forgotten");
+            else
+                hui::sys::log("[APP] could not delete %s (nothing saved?)", paths::kCredentials.c_str());
             session_.reset();
             pairing_.reset();
             set_state(State::Connecting);
