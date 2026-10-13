@@ -338,8 +338,6 @@ class CardArt
 void App::run()
 {
     sys::log("[APP] start");
-    // The first allocation made the heap: say how big the console let it be.
-    sys::log("[APP] heap %zu MB", hui_heap_capacity() >> 20);
     bell::setDefaultLogger();
 
     // The display opens at the saved resolution, falling back to 1080p
@@ -354,6 +352,9 @@ void App::run()
         sys::park();
     }
     sys::log("[APP] display %dx%d (asked %dx%d)", display.width(), display.height(), mode[0], mode[1]);
+    // The heap exists by now (made on the first allocation): its size is what
+    // the console let it be.
+    sys::log("[APP] heap %zu MB", hui_heap_capacity() >> 20);
     gfx::Renderer renderer;
     gfx::Font regular, semibold, display_face, mono;
     ui::Fonts fonts;
