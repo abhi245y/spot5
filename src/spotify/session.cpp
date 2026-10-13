@@ -9,7 +9,7 @@
 #include "LoginBlob.h"
 #include "MercurySession.h"
 #include "SpircHandler.h"
-#include "platform/log.hpp"
+#include "platform/ps5/system.hpp"
 
 namespace spotify
 {
@@ -56,7 +56,7 @@ std::unique_ptr<Session> Session::start(const app::Config &config, std::string &
     // Spotify returns a fresh reusable credential at each login; save it now
     // (not at exit: Close app ends the process without warning).
     if (!app::write_file(app::paths::kCredentials, session->ctx_->getCredentialsJson()))
-        platform::log("[APP] note: could not save refreshed login to %s",
+        hui::sys::log("[APP] note: could not save refreshed login to %s",
                       app::paths::kCredentials.c_str());
 
     // Same order as cspot's CLI: spirc, Mercury task, then the player.
@@ -68,7 +68,7 @@ std::unique_ptr<Session> Session::start(const app::Config &config, std::string &
         error = "Audio output could not be opened";
         return nullptr;
     }
-    platform::log("[APP] Spotify Connect running as \"%s\"", kDeviceName);
+    hui::sys::log("[APP] Spotify Connect running as \"%s\"", kDeviceName);
     return session;
 }
 

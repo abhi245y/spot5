@@ -1,25 +1,11 @@
-// ps5-spotify - App lifecycle: connect, play, report errors, retry on ✕.
+// ps5-spotify - The app: display, input and drawing on the main thread.
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// States:
-//   Connecting   -> Ready          login worked
-//   Connecting   -> Error          no config/login, no network, rejected login
-//   Ready        -> Reconnecting   cspot lost the connection (it retries itself)
-//   Reconnecting -> Ready          cspot got it back
-//   Reconnecting -> Error          not back within kReconnectGiveUpMs
-//   Error        -> Connecting     user pressed ✕ (config and login re-read)
-// The app runs until the system closes it (Close app); there is no quit.
+// Draws with ps5-homebrew-ui's kit at 60 fps and reads the controller; the
+// Spotify side runs on app::Controller's thread. Quits through the system
+// (Options -> Quit), or the user closes it from the PS menu (Close app).
 
 #pragma once
-
-#include <cstdint>
-#include <memory>
-#include <string>
-
-#include "app/config.hpp"
-#include "audio/player.hpp"
-#include "platform/pad.hpp"
-#include "spotify/session.hpp"
 
 namespace app
 {
@@ -28,29 +14,6 @@ class App
 {
   public:
     [[noreturn]] void run();
-
-  private:
-    enum class State
-    {
-        Connecting,
-        Ready,
-        Reconnecting,
-        Error,
-    };
-
-    void connect();
-    void step_ready();
-    void step_reconnecting();
-    void step_error();
-    void set_state(State next, const std::string &message = {});
-    void log_now_playing();
-
-    State state_ = State::Connecting;
-    std::string error_; // shown to the user in State::Error
-    std::int64_t reconnect_started_ms_ = 0;
-    std::unique_ptr<spotify::Session> session_;
-    platform::Pad pad_;
-    NowPlaying last_logged_;
 };
 
 } // namespace app

@@ -199,7 +199,7 @@ done
 link_inputs=("$build/obj/app_crt.o" "$build/obj/app_cpp_runtime.o" "${objects[@]}")
 link_inputs+=(--no-dependent-libraries --start-group
     "$sdk_root/target/lib/libc++.a" "$sdk_root/target/lib/libc++abi.a"
-    "$sdk_root/target/lib/libunwind.a" "$sdk_root/target/lib/libc.a" --end-group)
+    "$sdk_root/target/lib/libunwind.a" --end-group)
 for archive in "${archives[@]}"; do
     [[ $archive =~ ^[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)*\.a$ && -f $root/$archive ]] || {
         echo "invalid static archive: $archive" >&2; exit 2;
@@ -245,7 +245,11 @@ ninja_edge LINK "$build/llvm-pie.elf" "$sdk_root/bin/prospero-lld" \
     -T "$native/ps5-pie.ld" --eh-frame-hdr "${wrap_options[@]}" \
     --version-script "$native/app-symbols.map" \
     -e _start -o "$build/llvm-pie.elf" "${link_inputs[@]}" \
-    --as-needed "${stub_paths[@]}" "$sdk_root"/target/lib/*.so
+    --as-needed "${stub_paths[@]}" "$sdk_root"/target/lib/*.so \
+    "$sdk_root/target/lib/libc.a"
+# ps5-spotify: the SDK's libc.a comes after the system stubs so it only fills
+# what they lack (libc++ locale functions); placed earlier, its mmap/mprotect
+# replaced libkernel's and needed a payload-only kernel helper.
 ninja_inputs=("$build/llvm-pie.elf" "$tool" "${stub_paths[@]}" "$sdk_root"/target/lib/*.so)
 ninja_edge CONVERT "$build/eboot.elf" "$tool" link --in "$build/llvm-pie.elf" --out "$build/eboot.elf" \
     "${stub_options[@]}" --stub-dir "$sdk_root/target/lib" --module-sdk "$module_sdk" \

@@ -1,14 +1,25 @@
-// ps5-spotify - App lifecycle: connect, play, report errors, retry on ✕.
+// ps5-spotify - The app: display, input and drawing on the main thread.
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "app/app.hpp"
 
-#include <chrono>
+#include <GL/glcorearb.h>
 
-#include "BellLogger.h"
+#include <chrono>
+#include <cstdint>
+#include <string>
+
 #include "X509Bundle.h"
-#include "platform/log.hpp"
-#include "platform/system.hpp"
+#include "BellLogger.h"
+#include "app/config.hpp"
+#include "app/controller.hpp"
+#include "core/input.hpp"
+#include "core/save_file.hpp"
+#include "gfx/renderer.hpp"
+#include "platform/pad.hpp"
+#include "platform/ps5/display_egl.hpp"
+#include "platform/ps5/system.hpp"
+#include "ui/fonts.hpp"
 
 namespace app
 {
@@ -16,135 +27,138 @@ namespace app
 namespace
 {
 
-constexpr std::int64_t kReconnectGiveUpMs = 30000;
+using namespace hui;
 
-const char *name(int state)
+constexpr const char *kFonts = "/app0/assets/fonts/";
+
+bool load_font(gfx::Renderer &renderer, const char *name, gfx::Font &font, ui::FontRef &ref)
 {
-    static const char *names[] = {"Connecting", "Ready", "Reconnecting", "Error"};
-    return names[state];
+    std::string data;
+    if (!save::read_file(std::string(kFonts) + name, &data) || !font.load(data))
+    {
+        sys::log("[APP] font %s failed: %s", name, font.error().c_str());
+        return false;
+    }
+    ref.font = &font;
+    ref.texture = renderer.batch().create_font_texture(font);
+    return true;
 }
 
-std::int64_t now_ms()
+// Without the root bundle bell would accept any TLS certificate; it ships
+// with the app, so a failure here is a broken install, not a retryable error.
+bool init_certificates()
 {
-    using namespace std::chrono;
-    return duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
+    std::string bundle = read_file(paths::kCertBundle);
+    try
+    {
+        bell::X509Bundle::init(reinterpret_cast<const uint8_t *>(bundle.data()), bundle.size());
+        return true;
+    }
+    catch (const std::exception &e)
+    {
+        sys::log("[APP] certificate bundle unusable: %s", e.what());
+        return false;
+    }
+}
+
+// Ends the app the way the system expects: stop drawing, then ask it to close
+// the title (exit() would end in the crash reporter).
+[[noreturn]] void quit(ps5::Display &display)
+{
+    sys::log("[APP] quit requested");
+    display.close();
+    sys::quit();
+}
+
+void draw(gfx::DrawList &list, const ui::Fonts &fonts, const Status &status)
+{
+    const gfx::Color white = gfx::Color::rgb(0xffffff);
+    const gfx::Color dim = gfx::Color::rgb(0xffffff, 0.6f);
+    ui::text(list, fonts.semibold, "Spotify", 960, 420, 72, white, gfx::Align::center);
+    ui::text(list, fonts.regular, state_name(status.state), 960, 520, 40, white,
+             gfx::Align::center);
+    if (!status.message.empty())
+        ui::text(list, fonts.regular, status.message, 960, 580, 30, dim, gfx::Align::center);
+    if (!status.now_playing.title.empty())
+        ui::text(list, fonts.regular,
+                 status.now_playing.artist + " - " + status.now_playing.title, 960, 640, 34,
+                 white, gfx::Align::center);
+    const char *hint = status.state == State::Error ? "X Retry      OPTIONS Quit" : "OPTIONS Quit";
+    ui::text(list, fonts.regular, hint, 960, 1000, 26, dim, gfx::Align::center);
 }
 
 } // namespace
 
 void App::run()
 {
-    platform::log("[APP] start");
+    sys::log("[APP] start");
     bell::setDefaultLogger();
-    pad_.open();
 
-    // TLS certificate checks need the root bundle; without it bell would
-    // accept any certificate, so refuse to go on.
-    std::string bundle = read_file(paths::kCertBundle);
-    try
+    ps5::Display display;
+    if (!display.open(1920, 1080))
     {
-        bell::X509Bundle::init(reinterpret_cast<const uint8_t *>(bundle.data()), bundle.size());
+        sys::log("[APP] fatal: display open failed");
+        sys::park();
     }
-    catch (const std::exception &e)
+    gfx::Renderer renderer;
+    gfx::Font regular_font, semibold_font;
+    ui::Fonts fonts;
+    if (!renderer.init() || !load_font(renderer, "inter-regular.huifont", regular_font, fonts.regular) ||
+        !load_font(renderer, "inter-semibold.huifont", semibold_font, fonts.semibold))
     {
-        set_state(State::Error, std::string("Certificate bundle unusable: ") + e.what());
-        platform::park(); // shipped with the app: retrying cannot fix it
+        sys::log("[APP] fatal: renderer or fonts failed");
+        sys::park();
     }
+
+    Controller controller;
+    if (!init_certificates() || !controller.start())
+    {
+        sys::log("[APP] fatal: could not start");
+        sys::park();
+    }
+
+    platform::Pad pad;
+    pad.open();
+    gfx::DrawList list;
+    gfx::BackdropSpec sky;
+    sky.mode = gfx::BackdropMode::aurora;
+    sky.colors[0] = gfx::Color::rgb(0x07120c);
+    sky.colors[1] = gfx::Color::rgb(0x0d2418);
+    sky.colors[2] = gfx::Color::rgb(0x1db954);
+    sky.colors[3] = gfx::Color::rgb(0x1a6b47);
+    const auto started = std::chrono::steady_clock::now();
+    std::uint64_t frames = 0;
 
     for (;;)
     {
-        switch (state_)
+        if (!pad.is_open())
+            pad.open();
+        std::uint32_t pressed = pad.poll_pressed();
+        Status status = controller.status();
+        if (pressed & pad_bits::kOptions)
+            quit(display);
+        if ((pressed & pad_bits::kCross) && status.state == State::Error)
+            controller.send(Command::Retry);
+
+        list.clear();
+        draw(list, fonts, status);
+        sky.time = std::chrono::duration<float>(std::chrono::steady_clock::now() - started).count();
+        renderer.begin();
+        renderer.backdrop(sky);
+        renderer.draw(list);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+        renderer.present(0, display.width(), display.height());
+        if (!display.swap())
         {
-        case State::Connecting:
-            connect();
-            break;
-        case State::Ready:
-            step_ready();
-            break;
-        case State::Reconnecting:
-            step_reconnecting();
-            break;
-        case State::Error:
-            step_error();
-            break;
+            sys::log("[APP] fatal: swap failed frame=%llu",
+                     static_cast<unsigned long long>(frames));
+            sys::park();
         }
+        if (++frames == 1)
+            sys::log("[APP] first frame; splash hidden=%d", sys::hide_splash_screen() ? 1 : 0);
     }
-}
-
-void App::connect()
-{
-    Config config;
-    std::string error;
-    if (!load_config(config, error))
-    {
-        set_state(State::Error, error);
-        return;
-    }
-    session_ = spotify::Session::start(config, error);
-    if (!session_)
-    {
-        set_state(State::Error, error);
-        return;
-    }
-    set_state(State::Ready);
-}
-
-void App::step_ready()
-{
-    session_->pump(); // waits up to 200 ms for a packet
-    log_now_playing();
-    if (!session_->connected())
-    {
-        reconnect_started_ms_ = now_ms();
-        set_state(State::Reconnecting, "Connection lost, reconnecting");
-    }
-}
-
-void App::step_reconnecting()
-{
-    session_->pump();
-    if (session_->connected())
-        set_state(State::Ready);
-    else if (now_ms() - reconnect_started_ms_ > kReconnectGiveUpMs)
-    {
-        session_.reset(); // shuts cspot down; ✕ starts a fresh session
-        set_state(State::Error, "Lost connection to Spotify");
-    }
-}
-
-void App::step_error()
-{
-    if (!pad_.is_open())
-        pad_.open();
-    if (pad_.poll_pressed() & platform::button::kCross)
-    {
-        session_.reset();
-        set_state(State::Connecting);
-        return;
-    }
-    platform::sleep_ms(50);
-}
-
-void App::set_state(State next, const std::string &message)
-{
-    platform::log("[APP] state: %s -> %s%s%s", name(static_cast<int>(state_)),
-                  name(static_cast<int>(next)), message.empty() ? "" : ": ", message.c_str());
-    if (next == State::Error)
-    {
-        error_ = message;
-        platform::log("[APP] press X to retry");
-    }
-    state_ = next;
-}
-
-void App::log_now_playing()
-{
-    NowPlaying now = session_->now_playing();
-    if (now == last_logged_ || now.title.empty())
-        return;
-    platform::log("[APP] %s: %s - %s", now.paused ? "paused" : "playing", now.artist.c_str(),
-                  now.title.c_str());
-    last_logged_ = now;
 }
 
 } // namespace app

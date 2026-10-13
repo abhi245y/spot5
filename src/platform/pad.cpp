@@ -5,8 +5,7 @@
 
 #include <cstddef>
 
-#include "platform/log.hpp"
-#include "platform/system.hpp"
+#include "platform/ps5/system.hpp"
 
 namespace
 {
@@ -55,11 +54,11 @@ bool Pad::open()
         return true;
     int init = sceUserServiceInitialize(nullptr);
     if (init != 0 && init != kUserServiceAlreadyInitialized)
-        log("[APP] pad: sceUserServiceInitialize=0x%08x", static_cast<unsigned>(init));
+        hui::sys::log("[APP] pad: sceUserServiceInitialize=0x%08x", static_cast<unsigned>(init));
     int user = -1;
     if (sceUserServiceGetInitialUser(&user) != 0)
     {
-        log("[APP] pad: no initial user");
+        hui::sys::log("[APP] pad: no initial user");
         return false;
     }
     scePadInit();
@@ -68,10 +67,10 @@ bool Pad::open()
     {
         handle_ = scePadOpen(user, 0, 0, nullptr);
         if (handle_ < 0)
-            sleep_ms(50);
+            hui::sys::sleep_us(50000);
     }
     if (handle_ < 0)
-        log("[APP] pad: scePadOpen=0x%08x", static_cast<unsigned>(handle_));
+        hui::sys::log("[APP] pad: scePadOpen=0x%08x", static_cast<unsigned>(handle_));
     return handle_ >= 0;
 }
 
