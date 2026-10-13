@@ -186,7 +186,7 @@ int main()
     run_test("test2 tone 48k", 48000, t48.data(), t48.size() / 2);
     sceKernelUsleep(1000000);
 
-    auto ogg = read_file("/app0/assets/test.ogg");
+    auto ogg = read_file("/app0/assets/test.ogg (copy tests/test.ogg into assets/ to run)");
     int channels = 0, rate = 0;
     short *pcm = nullptr;
     int frames = ogg.empty() ? -1
