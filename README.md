@@ -5,8 +5,8 @@
 <h1 align="center">Spot5</h1>
 
 <p align="center">
-  A native Spotify Connect player for jailbroken PlayStation 5 consoles.<br>
-  Browse your music, play it on the TV, and control it from your phone — no PSN required.
+  A native, standalone Spotify app for jailbroken PlayStation 5 consoles.<br>
+  Browse and play your music on the TV with the controller — no PSN, and no phone needed after the first login.
 </p>
 
 <p align="center">
@@ -23,24 +23,26 @@
 
 ## Features
 
-**Spotify Connect on your console**
-- Shows up as a speaker in the Spotify app on your phone, tablet or computer; pick it and the music plays on the PS5.
-- Pair once from your phone over the local network. The login is saved, so Spot5 signs in by itself on the next launch.
-- Streams at 96, 160 or 320 kbps, with its own volume on top of your phone's.
-
 **Your music, on the TV**
 - **Home** — your personal shelves, mixes and recently played, with full-bleed artist artwork and morning/evening shelves in your time zone.
 - **Your Library** — playlists, albums and artists (Liked Songs pinned first), filterable and sortable.
 - **Playlist and album pages** — the full track list; play from any song, or shuffle.
 - **Artist pages** — wide header art, popular tracks, biography, albums and singles.
-- **Now Playing** — large artwork, a live visualiser, a seekable scrubber and the queue beside it.
+- **Now Playing** — large artwork, a live visualiser, seeking with the D-pad and triggers, and the queue beside it.
 
 **Built for the couch**
+- A standalone app driven entirely by the controller, like any other app on the console.
 - Native 4K rendering (or 1440p / 1080p), designed for a controller from the ground up.
 - A mini player that follows you between screens and docks under the cover on playlist pages.
-- Covers and Home are cached on the console, so the app opens instantly on the next launch.
+- Streams at 96, 160 or 320 kbps; covers and Home are cached, so the app opens instantly.
 - Hold the touchpad for 3 seconds on any screen to quit; a reduced-motion mode calms every animation.
 - Registers as a media app on the console's home screen.
+
+**Sign in once, then forget the phone**
+- The first time, log in by choosing **PS5** in the Spotify app on your phone. Spot5 keeps the login and signs in by itself from then on.
+
+**Spotify Connect as a bonus**
+- Spot5 also appears as a speaker in Spotify on your phone, tablet or computer, so you can start or control music from there when you like.
 
 ## Screenshots
 
@@ -121,7 +123,7 @@ Spot5 needs no configuration file. To override the Spotify client ID it uses, pl
 Spot5 grows in small releases, each tested on a console before it ships. The order puts groundwork first (speed and the shared song menu many later features build on), then the biggest everyday gaps, then the showpieces.
 
 ### v1.0.0 — first release ✅
-Spotify Connect pairing and saved login, Home, Your Library, playlist, album and artist pages, Now Playing with queue and scrubber, settings, native 4K, hold-to-quit.
+A standalone app in native 4K: Home, Your Library, playlist, album and artist pages, Now Playing with queue and scrubber, settings and hold-to-quit; one-time login from your phone, and Spotify Connect.
 
 ### v1.1 — Polish and speed
 - [ ] Button hints drawn in Spot5's own style on every screen
