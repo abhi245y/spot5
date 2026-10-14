@@ -42,7 +42,7 @@ class Session
     // credential and starts Spotify Connect, reporting each stage. Returns
     // nullptr and sets `error` (a message for the user) on failure.
     static std::unique_ptr<Session> start(const app::Config &config,
-                                          const screens::Settings &settings,
+                                          const screens::Settings &settings, const std::string &timezone,
                                           std::shared_ptr<cspot::LoginBlob> login, std::string &error,
                                           const std::function<void(Stage)> &progress);
 

@@ -185,6 +185,7 @@ struct Settings
     std::string device_name = "PS5";
     bool reduced_motion = false;
     int resolution = 2;           // 0: 1080p, 1: 1440p, 2: 4K (the display opens at it on launch)
+    std::string timezone;         // IANA name for Home; empty: Automatic (the console's offset)
 };
 
 // Facts for Control Room's About page.

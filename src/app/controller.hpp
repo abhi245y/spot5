@@ -81,6 +81,8 @@ class Controller
     Controller(const Controller &) = delete;
     Controller &operator=(const Controller &) = delete;
 
+    // The zone Automatic stands for (from the console's offset). Call before start().
+    void set_auto_timezone(std::string iana) { auto_timezone_ = std::move(iana); }
     // Starts the controller thread. Returns false if it could not start.
     bool start();
 
@@ -156,6 +158,9 @@ class Controller
     std::int64_t busy_since_ms_ = 0;
 
     screens::Settings settings_; // what the session runs with (controller thread)
+    std::string auto_timezone_ = "Etc/UTC";
+    // The IANA zone Home is asked for: the chosen one, or Automatic's.
+    const std::string &timezone() const { return settings_.timezone.empty() ? auto_timezone_ : settings_.timezone; }
 
     // Shared with the UI thread, under lock_.
     std::mutex lock_;

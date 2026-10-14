@@ -27,7 +27,7 @@ std::shared_ptr<cspot::LoginBlob> Session::saved_login(const std::string &device
 }
 
 std::unique_ptr<Session> Session::start(const app::Config &config,
-                                        const screens::Settings &settings,
+                                        const screens::Settings &settings, const std::string &timezone,
                                         std::shared_ptr<cspot::LoginBlob> blob, std::string &error,
                                         const std::function<void(Stage)> &progress)
 {
@@ -73,7 +73,7 @@ std::unique_ptr<Session> Session::start(const app::Config &config,
         return nullptr;
     }
     session->player_->set_volume(settings.volume, settings.phone_volume);
-    session->browser_ = std::make_unique<Browser>(session->ctx_, config.timezone);
+    session->browser_ = std::make_unique<Browser>(session->ctx_, timezone);
     hui::sys::log("[APP] Spotify Connect running as \"%s\"", settings.device_name.c_str());
     return session;
 }

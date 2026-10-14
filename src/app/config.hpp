@@ -30,14 +30,13 @@ constexpr const char *kCertBundle = "/app0/assets/x509_bundle.bin";
 
 struct Config
 {
-    // Spotify client id the saved credentials belong to (never in the repo).
-    std::string client_id;
-    // IANA time zone for Home's time-of-day shelves ("timezone", optional).
-    std::string timezone = "UTC";
+    // Spotify client id logins are made for. Default: librespot's public
+    // keymaster id (core/src/config.rs); config.json "client_id" overrides it.
+    std::string client_id = "65b708073fc0480ea92a077233ca87bd";
 };
 
-// Reads paths::kConfig. Returns false and sets `error` to a message for the
-// user when the file is missing or invalid.
+// Reads paths::kConfig, which is optional. Returns false and sets `error` to
+// a message for the user only when the file is there but unreadable.
 bool load_config(Config &config, std::string &error);
 
 // Control Room's settings; defaults for anything missing or unreadable.

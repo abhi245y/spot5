@@ -405,6 +405,12 @@ const std::vector<Beat> &script()
         {0.3f, nullptr, action_bit(Action::confirm)},           // into its row
         {0.8f, nullptr, action_bit(Action::confirm), "16-rename-keyboard"},
         {0.5f, nullptr, action_bit(Action::back)},              // cancel the sheet
+        {0.6f, nullptr, 0, "16b-timezone-row", Direction::down}, // Time zone
+        {0.8f, nullptr, action_bit(Action::confirm), "16c-timezone-list"},
+        {0.12f, nullptr, action_bit(Action::page_next)},
+        {0.7f, nullptr, action_bit(Action::page_next), "16d-timezone-scrolled"},
+        {0.5f, nullptr, action_bit(Action::back)},              // cancel the list
+        {0.3f, nullptr, 0, nullptr, Direction::up},             // back to Name
         {0.3f, nullptr, action_bit(Action::back)},              // back to the rail
         {0.3f, nullptr, 0, nullptr, Direction::down},           // Account
         {0.6f, nullptr, 0, "17-account", Direction::none},
@@ -475,6 +481,7 @@ int main(int argc, char **argv)
     screens::Settings settings;
     screens::Context context{fonts, settings};
     context.art = preview_art;
+    context.console_utc_minutes = 330; // a console set to India
     for (int i = 0; i < 4; ++i)
     {
         std::string data;

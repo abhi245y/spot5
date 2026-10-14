@@ -248,6 +248,7 @@ void Controller::apply_settings()
     if (!next)
         return;
     const bool renamed = next->device_name != settings_.device_name;
+    const bool rezoned = next->timezone != settings_.timezone;
     settings_ = *next;
     if (pairing_ && renamed)
     {
@@ -260,6 +261,8 @@ void Controller::apply_settings()
         return; // used by the next connect()
     session_->set_quality(settings_.quality);
     session_->set_volume(settings_.volume, settings_.phone_volume);
+    if (rezoned)
+        session_->browser().set_timezone(timezone()); // the next Home refresh uses it
     if (renamed)
     {
         // The name is part of the Connect identity: reconnect under it.
@@ -337,7 +340,7 @@ void Controller::start_session(std::shared_ptr<cspot::LoginBlob> login)
         set_state(State::Error, error);
         return;
     }
-    session_ = service::Session::start(config, settings_, std::move(login), error,
+    session_ = service::Session::start(config, settings_, timezone(), std::move(login), error,
                                        [this](service::Session::Stage stage) {
                                            set_step(stage == service::Session::Stage::connecting
                                                         ? screens::Step::connect

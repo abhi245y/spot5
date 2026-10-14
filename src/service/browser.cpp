@@ -351,10 +351,21 @@ void Browser::run()
     }
 }
 
+void Browser::set_timezone(std::string timezone)
+{
+    std::scoped_lock guard(lock_);
+    timezone_ = std::move(timezone);
+}
+
 void Browser::fetch_home()
 {
+    std::string timezone;
+    {
+        std::scoped_lock guard(lock_);
+        timezone = timezone_;
+    }
     const Reply reply = call(*keys_,
-                             "casita/v1/home/default?timezone=" + timezone_ +
+                             "casita/v1/home/default?timezone=" + timezone +
                                  "&locale=en&mobile-only-dsa-enabled=false",
                              "application/protobuf");
     if (reply.status != 200)

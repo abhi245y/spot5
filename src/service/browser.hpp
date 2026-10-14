@@ -50,6 +50,8 @@ class Browser
     // Loads the cached Home (if any) at once; nothing is fetched until asked.
     // `timezone` (IANA, e.g. "Asia/Kolkata") shapes Home's time-of-day shelves.
     Browser(std::shared_ptr<cspot::Context> ctx, std::string timezone);
+    // A new zone for the next Home fetch (Control Room > Device > Time zone).
+    void set_timezone(std::string timezone);
     // Waits for a running request to finish.
     ~Browser();
     Browser(const Browser &) = delete;
@@ -103,7 +105,7 @@ class Browser
     void fetch_artist(const std::string &uri);
 
     std::shared_ptr<cspot::Context> ctx_;
-    std::string timezone_;
+    std::string timezone_; // under lock_ (set_timezone from the controller thread)
     std::unique_ptr<cspot::AccessKeyFetcher> keys_; // worker thread only
 
     // Worker thread only.

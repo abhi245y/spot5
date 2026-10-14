@@ -18,6 +18,7 @@
 
 #include "core/tween.hpp"
 #include "screens/style.hpp"
+#include "screens/timezones.hpp"
 #include "ui/components/keyboard.hpp"
 #include "ui/glyphs.hpp"
 #include "ui/motion.hpp"
@@ -68,6 +69,10 @@ constexpr float kStepperW = 300.0f;
 
 constexpr Rect kDialog{560.0f, 348.0f, 800.0f, 384.0f};
 constexpr Rect kSheet{360.0f, 300.0f, 1200.0f, 600.0f};
+constexpr Rect kPicker{510.0f, 170.0f, 900.0f, 740.0f};
+constexpr float kPickerRowH = 62.0f;
+constexpr float kPickerTop = 150.0f; // the list starts this far into the picker
+constexpr int kPickerPage = 8;       // L1 / R1 move this many zones
 constexpr int kNameLimit = 24;
 
 constexpr float kSaveDelay = 0.8f; // the app writes the file 0.75 s after the last change
@@ -85,6 +90,7 @@ enum class Field : std::uint8_t
     forget,
     reduce_motion,
     resolution,
+    timezone,
     clear_cache,
     reset,
     quit,
@@ -99,6 +105,7 @@ enum class Kind : std::uint8_t
     toggle,  // on or off, confirm
     action,  // confirm asks first (dialog)
     name,    // shows a name; confirm opens the keyboard
+    choose,  // shows a value; confirm opens a list to pick from
     info,    // shows a value; nothing to do
 };
 
@@ -129,6 +136,8 @@ constexpr Row kPlaybackRows[] = {
 constexpr Row kDeviceRows[] = {
     {"Name", "How this console appears in Spotify's device list. Reconnects to apply.", Kind::name,
      Field::device_name},
+    {"Time zone", "Shapes Home's morning and evening shelves. Applies when Home next refreshes.",
+     Kind::choose, Field::timezone},
 };
 constexpr Row kAccountRows[] = {
     {"Signed in as", "The Spotify account this console plays for.", Kind::info, Field::account},
@@ -156,7 +165,7 @@ constexpr int kAbout = 4;
 constexpr int kQuit = 5;
 constexpr Category kCategories[] = {
     {"Playback", "Sound quality and how loud this console plays.", kPlaybackRows, 3},
-    {"Device", "How this console shows up in Spotify.", kDeviceRows, 1},
+    {"Device", "How this console shows up in Spotify, and its local time.", kDeviceRows, 2},
     {"Account", "Who is signed in, and how to forget it.", kAccountRows, 2},
     {"Display", "How sharp and how calm the interface is.", kDisplayRows, 2},
     {"About", "What this app is built from, its saved data, and the way back to its defaults.", kAboutRows, 2},
@@ -183,9 +192,11 @@ enum class HintMode : std::uint8_t
     toggle_on,
     action,
     name,
+    choose,
     info,
     dialog,
     keyboard,
+    picker,
 };
 
 enum class Ask : std::uint8_t
@@ -288,6 +299,7 @@ class ControlRoom final : public Screen
         leave_.running = false;
         ask_ = Ask::none;
         sheet_open_ = false;
+        picker_open_ = false;
         close_ = false;
         column_ = Column::rail;
     }
@@ -306,6 +318,8 @@ class ControlRoom final : public Screen
             update_dialog(input, feedback, commands);
         else if (sheet_open_)
             update_sheet(input, feedback);
+        else if (picker_open_)
+            update_picker(input, feedback);
         else
             update_screen(input, feedback);
         update_toast(dt, feedback);
@@ -322,6 +336,14 @@ class ControlRoom final : public Screen
         dialog_.update(dt, calm ? 40.0f : 14.0f);
         sheet_.target = sheet_open_ ? 1.0f : 0.0f;
         sheet_.update(dt, calm ? 40.0f : 14.0f);
+        picker_.target = picker_open_ ? 1.0f : 0.0f;
+        picker_.update(dt, calm ? 40.0f : 14.0f);
+        picker_focus_.target = as_float(picker_index_) * kPickerRowH;
+        picker_focus_.update(dt, calm ? 40.0f : 22.0f);
+        const float view = kPicker.h - kPickerTop - 40.0f;
+        picker_scroll_.target = std::clamp(picker_focus_.target - view * 0.5f + kPickerRowH * 0.5f, 0.0f,
+                                           std::max(0.0f, as_float(kTimeZoneCount + 1) * kPickerRowH - view));
+        picker_scroll_.update(dt, calm ? 40.0f : 16.0f);
         keyboard_.style.reduced_motion = calm;
         keyboard_.set_length(static_cast<int>(name_edit_.size()));
         keyboard_.update(dt);
@@ -355,7 +377,7 @@ class ControlRoom final : public Screen
         frame.backdrop.time = drift_;
 
         gfx::DrawList &list = frame.scene;
-        const float back = std::max(dialog_.value, sheet_.value);
+        const float back = std::max({dialog_.value, sheet_.value, picker_.value});
         list.push_transform(1.0f - 0.03f * back * travel(), 960, 540, 0, 0);
         draw_header(list);
         draw_rail(list);
@@ -384,6 +406,11 @@ class ControlRoom final : public Screen
         {
             frame.glass = true;
             draw_sheet(frame.overlay, frame.glass_texture);
+        }
+        if (picker_.value > 0.01f)
+        {
+            frame.glass = true;
+            draw_picker(frame.overlay, frame.glass_texture);
         }
         draw_hints(frame);
         draw_toast(frame.overlay);
@@ -498,6 +525,8 @@ class ControlRoom final : public Screen
             return HintMode::dialog;
         if (sheet_open_)
             return HintMode::keyboard;
+        if (picker_open_)
+            return HintMode::picker;
         if (column_ == Column::rail)
             return HintMode::rail;
         const Row &row = focused_row();
@@ -511,6 +540,8 @@ class ControlRoom final : public Screen
             return value(row.field) != 0 ? HintMode::toggle_on : HintMode::toggle_off;
         case Kind::name:
             return HintMode::name;
+        case Kind::choose:
+            return HintMode::choose;
         case Kind::info:
             return HintMode::info;
         default:
@@ -711,6 +742,14 @@ class ControlRoom final : public Screen
             keyboard_.set_layout(0);
             feedback.play(audio::Cue::modal_open);
             break;
+        case Kind::choose:
+            // The list opens on what is chosen now (0 is Automatic).
+            picker_open_ = true;
+            picker_index_ = zone_index(context_.settings.timezone) + 1;
+            picker_focus_.snap(as_float(picker_index_) * kPickerRowH);
+            picker_scroll_.snap(0.0f);
+            feedback.play(audio::Cue::modal_open);
+            break;
         case Kind::slider:
         case Kind::info:
             break;
@@ -735,6 +774,55 @@ class ControlRoom final : public Screen
             sheet_open_ = false;
             feedback.play(audio::Cue::back);
         }
+    }
+
+    // The time zone list: up / down (L1 / R1 by a page), Cross picks, Circle cancels.
+    void update_picker(const InputFrame &input, ui::Feedback &feedback)
+    {
+        int step = 0;
+        if (input.nav == Direction::up || input.nav == Direction::down)
+            step = input.nav == Direction::down ? 1 : -1;
+        else if (input.is_pressed(Action::page_prev) || input.is_pressed(Action::page_next))
+            step = input.is_pressed(Action::page_next) ? kPickerPage : -kPickerPage;
+        if (step != 0)
+        {
+            const int next = std::clamp(picker_index_ + step, 0, kTimeZoneCount);
+            if (next == picker_index_)
+                refuse(input, feedback);
+            else
+            {
+                picker_index_ = next;
+                feedback.play(audio::Cue::focus, 1.0f, 0.0f);
+            }
+        }
+        if (input.is_pressed(Action::confirm))
+        {
+            const std::string chosen = picker_index_ == 0 ? std::string() : kTimeZones[picker_index_ - 1].iana;
+            picker_open_ = false;
+            feedback.play(audio::Cue::select);
+            if (chosen != context_.settings.timezone)
+            {
+                context_.settings.timezone = chosen;
+                mark_changed("Saved");
+            }
+        }
+        else if (input.is_pressed(Action::back))
+        {
+            picker_open_ = false;
+            feedback.play(audio::Cue::back);
+        }
+    }
+
+    // What the Time zone row shows: Automatic with the console's offset, or the city.
+    std::string timezone_label() const
+    {
+        const std::string &chosen = context_.settings.timezone;
+        if (chosen.empty())
+            return "Automatic \xC2\xB7 " + utc_label(context_.console_utc_minutes);
+        const int index = zone_index(chosen);
+        if (index < 0)
+            return chosen;
+        return std::string(kTimeZones[index].city) + " \xC2\xB7 " + utc_label(kTimeZones[index].minutes);
     }
 
     void update_dialog(const InputFrame &input, ui::Feedback &feedback,
@@ -1052,6 +1140,9 @@ class ControlRoom final : public Screen
         case Kind::name:
             draw_value(list, r, context_.settings.device_name, focused, true);
             break;
+        case Kind::choose:
+            draw_value(list, r, timezone_label(), focused, true);
+            break;
         case Kind::info:
             draw_value(list, r, model.username.empty() ? "Not signed in" : model.username, focused,
                        false);
@@ -1364,7 +1455,8 @@ class ControlRoom final : public Screen
 
     static gfx::DrawList &hint_list(Frame &frame, HintMode mode)
     {
-        return mode == HintMode::dialog || mode == HintMode::keyboard ? frame.overlay : frame.scene;
+        return mode == HintMode::dialog || mode == HintMode::keyboard || mode == HintMode::picker ? frame.overlay
+                                                                                                 : frame.scene;
     }
 
     int build_hints(HintMode mode, ui::Hint *hints) const
@@ -1403,8 +1495,17 @@ class ControlRoom final : public Screen
             hints[count++] = {ui::Button::cross, "Rename"};
             hints[count++] = back;
             break;
+        case HintMode::choose:
+            hints[count++] = {ui::Button::cross, "Change"};
+            hints[count++] = back;
+            break;
         case HintMode::info:
             hints[count++] = back;
+            break;
+        case HintMode::picker:
+            hints[count++] = {ui::Button::cross, "Choose"};
+            hints[count++] = {ui::Button::l1, "Page", ui::Button::r1};
+            hints[count++] = {ui::Button::circle, "Cancel"};
             break;
         case HintMode::dialog:
             hints[count++] = {ui::Button::cross, "Choose"};
@@ -1416,7 +1517,7 @@ class ControlRoom final : public Screen
             hints[count++] = {ui::Button::circle, "Cancel"};
             break;
         }
-        if (mode != HintMode::dialog && mode != HintMode::keyboard)
+        if (mode != HintMode::dialog && mode != HintMode::keyboard && mode != HintMode::picker)
             hints[count++] = category;
         return count;
     }
@@ -1492,8 +1593,8 @@ class ControlRoom final : public Screen
                 ? "Saved covers, Home and Library are deleted and download again. Your login and "
                   "settings stay."
             : shown == Ask::reset
-                ? "Quality, volume, the device name, reduce motion and resolution go back to how the app "
-                  "first started."
+                ? "Every option on these pages goes back to how it was when the app first started, "
+                  "time zone included."
                 : "The music stops and the app closes. You can also close it any time with the PS "
                   "button.";
         const char *yes = shown == Ask::forget  ? "Forget"
@@ -1577,6 +1678,53 @@ class ControlRoom final : public Screen
         list.pop_opacity();
     }
 
+    // The time zone list: Automatic first, then the cities by offset. The
+    // focus glides; the list scrolls to keep it in the middle.
+    void draw_picker(gfx::DrawList &list, std::uint32_t glass) const
+    {
+        const ui::Fonts &fonts = context_.fonts;
+        const float t = picker_.value;
+        list.push_opacity(tween::clamp01(t * 1.5f));
+        list.push_transform(1.0f - 0.04f * (1.0f - t) * travel(), 960, 540, 0, 30.0f * (1.0f - t) * travel());
+        list.shadow({kPicker.x, kPicker.y + 24, kPicker.w, kPicker.h}, kPanelRadius, 60, Color::rgb(0x000000, 0.55f));
+        list.glass(glass, kPicker, kPanelRadius, Color::rgb(0xffffff));
+        list.gradient_rect(kPicker, kPanelRadius, gfx::mix(kSurface, kAccent, 0.06f).with_alpha(0.55f),
+                           kDeep.with_alpha(0.72f));
+        list.bordered_rect(kPicker, kPanelRadius, kClear, 1.5f, kInk.with_alpha(0.24f));
+        ui::text(list, fonts.semibold, "TIME ZONE", kPicker.x + 56, kPicker.y + 70, 18, kAccent, gfx::Align::left,
+                 4.0f);
+        ui::text(list, fonts.regular, "Home's morning and evening shelves follow it.", kPicker.x + 56,
+                 kPicker.y + 112, 24, kInk.with_alpha(0.7f));
+
+        const Rect area{kPicker.x + 32, kPicker.y + kPickerTop, kPicker.w - 64, kPicker.h - kPickerTop - 40};
+        list.push_clip(area);
+        const float top = area.y - picker_scroll_.value;
+        const Rect lit{area.x, top + picker_focus_.value + 4, area.w, kPickerRowH - 8};
+        list.rounded_rect(lit, 16, gfx::mix(kSurface, kAccent, 0.2f));
+        list.bordered_rect(lit, 16, kClear, 2.0f, kAccent);
+        const int chosen = zone_index(context_.settings.timezone) + 1;
+        for (int i = 0; i <= kTimeZoneCount; ++i)
+        {
+            const float y = top + as_float(i) * kPickerRowH;
+            if (y + kPickerRowH < area.y || y > area.y + area.h)
+                continue;
+            const float cy = y + kPickerRowH * 0.5f;
+            const bool focused = i == picker_index_;
+            const std::string name = i == 0 ? "Automatic" : kTimeZones[i - 1].city;
+            const std::string offset = i == 0 ? utc_label(context_.console_utc_minutes) + "  \xC2\xB7  this console"
+                                              : utc_label(kTimeZones[i - 1].minutes);
+            if (i == chosen)
+                list.circle(area.x + 28, cy, 6, kAccent);
+            ui::text(list, focused ? fonts.semibold : fonts.regular, name, area.x + 52, centred(cy, 28), 28,
+                     kInk.with_alpha(focused ? 1.0f : 0.8f));
+            ui::text(list, fonts.mono, offset, area.x + area.w - 24, centred(cy, 22), 22,
+                     kInk.with_alpha(focused ? 0.9f : 0.55f), gfx::Align::right);
+        }
+        list.pop_clip();
+        list.pop_transform();
+        list.pop_opacity();
+    }
+
     void draw_toast(gfx::DrawList &list) const
     {
         const float t = toast_.value;
@@ -1640,6 +1788,11 @@ class ControlRoom final : public Screen
 
     bool sheet_open_ = false;
     tween::Spring sheet_;
+    bool picker_open_ = false;
+    int picker_index_ = 0; // 0: Automatic, then kTimeZones[index - 1]
+    tween::Spring picker_;
+    tween::Spring picker_focus_;  // the focus row's top, in list pixels
+    tween::Spring picker_scroll_; // how far the list has scrolled
     std::string name_edit_;
     ui::Keyboard keyboard_;
 

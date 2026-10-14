@@ -29,6 +29,7 @@
 #include "platform/ps5/pad.hpp"
 #include "platform/ps5/system.hpp"
 #include "screens/shell.hpp"
+#include "screens/timezones.hpp"
 #include "service/cover.hpp"
 #include "service/home.hpp"
 #include "third_party/stb/stb_image.h"
@@ -36,6 +37,7 @@
 
 extern "C" std::size_t hui_heap_capacity(void); // runtime/app_heap.c
 extern "C" int hui_heap_is_direct(void);
+extern "C" int sceSystemServiceParamGetInt(int id, int *value);
 extern "C" void hui_heap_stats(std::size_t *live, std::size_t *peak, std::size_t *blocks,
                                std::size_t *failures);
 
@@ -44,6 +46,19 @@ namespace app
 
 namespace
 {
+
+// The console's offset from UTC now (Settings > Date and Time), in minutes:
+// system parameter 4 is the zone's offset, 5 is summer time.
+int console_utc_minutes()
+{
+    int zone = 0;
+    int summer = 0;
+    const int zone_rc = sceSystemServiceParamGetInt(4, &zone);
+    const int summer_rc = sceSystemServiceParamGetInt(5, &summer);
+    hui::sys::log("[APP] console time zone: offset %d min (0x%08x), summer time %d (0x%08x)", zone,
+             static_cast<unsigned>(zone_rc), summer, static_cast<unsigned>(summer_rc));
+    return (zone_rc == 0 ? zone : 0) + (summer_rc == 0 && summer ? 60 : 0);
+}
 
 using namespace hui;
 
@@ -377,7 +392,9 @@ void App::run()
         sys::park();
     }
 
+    const int utc_minutes = console_utc_minutes();
     Controller controller;
+    controller.set_auto_timezone(screens::zone_for_offset(utc_minutes).iana);
     controller.apply(settings); // before start: the first login uses them
     if (!init_certificates() || !controller.start())
     {
@@ -392,6 +409,7 @@ void App::run()
     CardArt card_art(renderer);
     screens::Context context{fonts, settings};
     context.art = [&card_art](const std::string &url) { return card_art.get(url); };
+    context.console_utc_minutes = utc_minutes;
     for (int i = 0; i < 4; ++i)
     {
         std::string data;

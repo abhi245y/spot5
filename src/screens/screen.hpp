@@ -66,6 +66,8 @@ struct Context
     // The Spot5 mark (assets/logo): arcs top to bottom, then the white shine
     // silhouette. 0 where a file was missing.
     std::uint32_t logo[4] = {};
+    // The console's offset from UTC now, in minutes (Automatic time zone).
+    int console_utc_minutes = 0;
 };
 
 // The Spot5 mark filling the square r.
