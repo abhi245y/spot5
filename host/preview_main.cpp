@@ -84,8 +84,8 @@ bool load_font(gfx::Renderer &renderer, const std::string &path, gfx::Font &font
 }
 
 // One step of the script: wait `seconds` (simulated), with the model changed
-// by `change` at the start and `press` held for the first frame; then save a
-// picture named `capture` if there is one.
+// by `change` at the start, `press` for the first frame and `hold` down the
+// whole time; then save a picture named `capture` if there is one.
 struct Beat
 {
     float seconds;
@@ -93,6 +93,7 @@ struct Beat
     std::uint32_t press = 0;
     const char *capture = nullptr;
     Direction nav = Direction::none;
+    std::uint32_t hold = 0;
 };
 
 std::shared_ptr<const screens::Queue> fixture_queue();
@@ -423,6 +424,9 @@ const std::vector<Beat> &script()
         {0.5f, nullptr, action_bit(Action::back)},              // Cancel
         {0.3f, nullptr, action_bit(Action::back)},              // rail
         {0.8f, nullptr, action_bit(Action::back), "20-back-to-playing"},
+        // Holding the touchpad: the quit ring fills; let go before 6 s and it fades.
+        {2.5f, nullptr, 0, "21-hold-to-quit", Direction::none, action_bit(Action::touch)},
+        {0.4f, nullptr, 0, "21b-hold-released"},
     };
     return beats;
 }
@@ -522,6 +526,7 @@ int main(int argc, char **argv)
         {
             InputFrame input;
             input.connected = true;
+            input.held = beat.hold;
             if (i == 0)
             {
                 input.pressed = beat.press;

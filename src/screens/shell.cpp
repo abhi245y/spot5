@@ -6,7 +6,9 @@
 
 #include "screens/shell.hpp"
 
+#include <algorithm>
 #include <cmath>
+#include <cstdio>
 
 #include "gfx/renderer.hpp"
 #include "platform/ps5/system.hpp"
@@ -21,6 +23,10 @@
 
 namespace screens
 {
+
+// The touchpad: released within kTapSeconds it is a tap; held kQuitSeconds, it quits.
+constexpr float kTapSeconds = 0.3f;
+constexpr float kQuitSeconds = 6.0f;
 
 namespace
 {
@@ -145,12 +151,46 @@ void Shell::update(const Model &model, const InputFrame &input, float dt, ui::Fe
             go(next, Move::slide, 0.6f);
     }
 
-    // The touchpad opens Control Room from any screen; it closes itself.
-    if (!menu_open_ && input.is_pressed(Action::touch))
+    // The touchpad, on any screen: a tap (released within kTapSeconds)
+    // opens Control Room or closes it; held for kQuitSeconds it quits, with a
+    // ring filling in the middle and a rumble growing every half second.
+    bool tapped = false;
+    if (input.is_held(Action::touch) || input.is_pressed(Action::touch))
+    {
+        const float before = touch_held_;
+        touch_held_ += dt;
+        if (touch_held_ >= kTapSeconds && !quit_sent_)
+        {
+            quit_progress_ = std::min(1.0f, touch_held_ / kQuitSeconds);
+            if (std::floor(touch_held_ * 2.0f) != std::floor(before * 2.0f))
+                feedback.rumble(0.12f + 0.5f * quit_progress_, 0.08f);
+            if (touch_held_ >= kQuitSeconds)
+            {
+                quit_sent_ = true;
+                feedback.rumble(1.0f, 0.3f);
+                hui::sys::log("[UI] touchpad held %.0f s: quit", static_cast<double>(kQuitSeconds));
+                commands.push_back(Command::quit);
+            }
+        }
+    }
+    else
+    {
+        tapped = touch_held_ > 0.0f && touch_held_ < kTapSeconds;
+        touch_held_ = 0.0f;
+    }
+    quit_shown_.target = touch_held_ >= kTapSeconds || quit_sent_ ? 1.0f : 0.0f;
+    quit_shown_.update(dt, context_.settings.reduced_motion ? 40.0f : 12.0f);
+
+    if (tapped && !menu_open_)
     {
         menu_open_ = true;
         feedback.play(audio::Cue::modal_open);
         go(Id::menu, Move::slide, 0.5f);
+    }
+    else if (tapped && menu_open_)
+    {
+        menu_open_ = false;
+        feedback.play(audio::Cue::modal_close);
     }
     else
     {
@@ -400,6 +440,36 @@ void Shell::draw_overlays(gfx::DrawList &list, const Model &model)
         ui::text(list, fonts.semibold, status_text_ + ellipsis, pill.x + 56, pill.cy() + 8 + 22.0f * (1.0f - t), 22,
                  kInk.with_alpha(t));
         list.pop_clip();
+        list.pop_opacity();
+    }
+
+    // Holding the touchpad: the screen dims and a ring fills around a power
+    // mark; letting go early fades it away.
+    if (const float shown = quit_shown_.value; shown > 0.01f)
+    {
+        constexpr float kPi = kTau * 0.5f;
+        const float cx = kCentreX;
+        const float cy = kCentreY - 40.0f;
+        const float radius = 96.0f;
+        list.push_opacity(tween::clamp01(shown));
+        list.rounded_rect({0, 0, gfx::kVirtualWidth, gfx::kVirtualHeight}, 0, kNight.with_alpha(0.62f));
+        list.glow({cx - radius, cy - radius, radius * 2, radius * 2}, radius, 60,
+                  kGreen.with_alpha(0.12f + 0.25f * quit_progress_));
+        list.ring(cx, cy, radius, 10, kInk.with_alpha(0.14f));
+        if (quit_progress_ > 0.0f)
+            list.arc(cx, cy, radius, 10, 0.0f, kTau * quit_progress_, kGreen);
+        list.arc(cx, cy + 4, 36, 7, kPi * 0.2f, kPi * 1.6f, kInk);
+        list.line(cx, cy - 38, cx, cy - 4, 7.0f, kInk);
+        ui::text(list, fonts.semibold, quit_sent_ ? "Quitting" : "Keep holding to quit", cx, cy + radius + 70, 34,
+                 kInk, gfx::Align::center);
+        if (!quit_sent_)
+        {
+            char left[32];
+            std::snprintf(left, sizeof(left), "Let go to cancel \xC2\xB7 %d s",
+                          static_cast<int>(std::ceil(kQuitSeconds * (1.0f - quit_progress_))));
+            ui::text(list, fonts.regular, left, cx, cy + radius + 112, 24, kInk.with_alpha(0.6f),
+                     gfx::Align::center);
+        }
         list.pop_opacity();
     }
 

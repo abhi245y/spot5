@@ -582,12 +582,6 @@ class ControlRoom final : public Screen
 
     void update_screen(const InputFrame &input, ui::Feedback &feedback)
     {
-        if (input.is_pressed(Action::touch))
-        {
-            close_ = true;
-            feedback.play(audio::Cue::modal_close);
-            return;
-        }
         if (input.is_pressed(Action::jump_prev))
             step_category(-1, input, feedback);
         else if (input.is_pressed(Action::jump_next))

@@ -90,6 +90,11 @@ class Shell
     tween::Spring status_width_;
     std::string status_text_, status_previous_;
     tween::Timer status_swap_;
+    // The touchpad: a tap opens / closes Control Room; holding it quits.
+    float touch_held_ = 0.0f;    // seconds the touchpad has been down
+    float quit_progress_ = 0.0f; // 0..1 of the hold, kept while the ring fades
+    bool quit_sent_ = false;
+    tween::Spring quit_shown_;
     // Model::notice, shown once on whatever screen is up.
     std::uint32_t notice_id_ = 0;
     std::string notice_;
