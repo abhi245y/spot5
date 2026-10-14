@@ -132,7 +132,11 @@ void Pad::rumble(float strength, float seconds)
     const PadVibration vibration{
         static_cast<std::uint8_t>(clamped > 0.6f ? (clamped - 0.6f) * 2.5f * 255.0f : 0.0f),
         static_cast<std::uint8_t>(clamped * 255.0f)};
-    scePadSetVibration(handle_, &vibration);
+    // A rumble renewed every frame at the same strength only extends its time.
+    if (rumble_left_ <= 0.0f || vibration.large_motor != last_large_ || vibration.small_motor != last_small_)
+        scePadSetVibration(handle_, &vibration);
+    last_large_ = vibration.large_motor;
+    last_small_ = vibration.small_motor;
     rumble_left_ = seconds;
 }
 

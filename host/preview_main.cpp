@@ -36,6 +36,11 @@
 #include "third_party/stb/stb_image.h"
 #include "ui/fonts.hpp"
 
+namespace hui::sys
+{
+extern std::int64_t g_preview_us; // platform_host.cpp: the simulated clock
+}
+
 using namespace hui;
 using screens::Command;
 using screens::Connection;
@@ -426,7 +431,8 @@ const std::vector<Beat> &script()
         {0.8f, nullptr, action_bit(Action::back), "20-back-to-playing"},
         // Holding the touchpad: the quit ring fills; let go before 6 s and it fades.
         {1.5f, nullptr, 0, "21-hold-to-quit", Direction::none, action_bit(Action::touch)},
-        {0.4f, nullptr, 0, "21b-hold-released"},
+        {0.15f, nullptr, 0, "21b-hold-draining"},
+        {0.8f, nullptr, 0, "21c-hold-gone"},
     };
     return beats;
 }
@@ -534,6 +540,7 @@ int main(int argc, char **argv)
             }
             ui::Feedback feedback;
             std::vector<Command> commands;
+            ::hui::sys::g_preview_us += static_cast<std::int64_t>(kDt * 1e6f);
             shell.update(model, input, kDt, feedback, commands);
             for (const screens::Request &request : context.requests)
                 if (request.kind == screens::Request::Kind::open && request.card.uri.rfind("spotify:artist:", 0) == 0)

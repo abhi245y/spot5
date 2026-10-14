@@ -27,6 +27,7 @@ namespace screens
 // The touchpad: released within kTapSeconds it is a tap; held kQuitSeconds, it quits.
 constexpr float kTapSeconds = 0.3f;
 constexpr float kQuitSeconds = 3.0f;
+constexpr float kDrainSeconds = 0.45f; // a released ring empties this fast
 
 namespace
 {
@@ -153,7 +154,8 @@ void Shell::update(const Model &model, const InputFrame &input, float dt, ui::Fe
 
     // The touchpad, on any screen: a tap (released within kTapSeconds)
     // opens Control Room or closes it; held for kQuitSeconds it quits, with a
-    // ring filling in the middle and a rumble each second, growing.
+    // ring filling in the middle and a rumble that grows with it. Let go
+    // early and the ring drains back before the overlay leaves.
     // Timed by the real clock: dt is clamped, so slow frames would stretch it.
     bool tapped = false;
     if (input.is_held(Action::touch) || input.is_pressed(Action::touch))
@@ -164,14 +166,12 @@ void Shell::update(const Model &model, const InputFrame &input, float dt, ui::Fe
             touch_down_us_ = now;
             hui::sys::log("[UI] touchpad down");
         }
-        const float before = touch_held_;
         touch_held_ = static_cast<float>(now - touch_down_us_) / 1e6f;
         if (touch_held_ >= kTapSeconds && !quit_sent_)
         {
             quit_progress_ = std::min(1.0f, touch_held_ / kQuitSeconds);
-            // One pulse per second, in step with the countdown, each stronger.
-            if (std::floor(touch_held_) != std::floor(before) && touch_held_ < kQuitSeconds)
-                feedback.rumble(0.25f + 0.45f * quit_progress_, 0.1f);
+            // In 20 steps, so the pad is told only when the strength changes.
+            feedback.rumble(std::round((0.1f + 0.8f * quit_progress_) * 20.0f) / 20.0f, 0.1f);
             if (touch_held_ >= kQuitSeconds)
             {
                 quit_sent_ = true;
@@ -186,8 +186,10 @@ void Shell::update(const Model &model, const InputFrame &input, float dt, ui::Fe
         tapped = touch_down_us_ != 0 && touch_held_ < kTapSeconds;
         touch_down_us_ = 0;
         touch_held_ = 0.0f;
+        if (!quit_sent_) // drain the ring, a full one in kDrainSeconds
+            quit_progress_ = std::max(0.0f, quit_progress_ - dt / (context_.settings.reduced_motion ? 0.12f : kDrainSeconds));
     }
-    quit_shown_.target = touch_held_ >= kTapSeconds || quit_sent_ ? 1.0f : 0.0f;
+    quit_shown_.target = touch_held_ >= kTapSeconds || quit_progress_ > 0.0f || quit_sent_ ? 1.0f : 0.0f;
     quit_shown_.update(dt, context_.settings.reduced_motion ? 40.0f : 12.0f);
 
     if (tapped && !menu_open_)
@@ -469,9 +471,10 @@ void Shell::draw_overlays(gfx::DrawList &list, const Model &model)
             list.arc(cx, cy, radius, 10, 0.0f, kTau * quit_progress_, kGreen);
         list.arc(cx, cy + 4, 36, 7, kPi * 0.2f, kPi * 1.6f, kInk);
         list.line(cx, cy - 38, cx, cy - 4, 7.0f, kInk);
-        ui::text(list, fonts.semibold, quit_sent_ ? "Quitting" : "Keep holding to quit", cx, cy + radius + 70, 34,
-                 kInk, gfx::Align::center);
-        if (!quit_sent_)
+        const bool holding = touch_down_us_ != 0;
+        ui::text(list, fonts.semibold, quit_sent_ ? "Quitting" : holding ? "Keep holding to quit" : "Cancelled", cx,
+                 cy + radius + 70, 34, kInk, gfx::Align::center);
+        if (!quit_sent_ && holding)
         {
             char left[32];
             std::snprintf(left, sizeof(left), "Let go to cancel \xC2\xB7 %d s",

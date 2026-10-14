@@ -46,6 +46,7 @@ class Pad
     int user_ = -1;
     bool owns_user_service_ = false;
     float rumble_left_ = 0.0f;
+    std::uint8_t last_large_ = 0, last_small_ = 0; // the motors' last setting
     std::uint32_t light_bar_ = 0xffffffffu;
 };
 

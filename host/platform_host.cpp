@@ -13,11 +13,13 @@
 namespace hui::sys
 {
 
+// The preview's own clock: preview_main advances it by each simulated frame,
+// so time read from the clock matches the script, not how fast it renders.
+std::int64_t g_preview_us = 0;
+
 std::int64_t monotonic_us()
 {
-    timespec now{};
-    clock_gettime(CLOCK_MONOTONIC, &now);
-    return static_cast<std::int64_t>(now.tv_sec) * 1000000 + now.tv_nsec / 1000;
+    return g_preview_us;
 }
 
 void log(const char *format, ...)
