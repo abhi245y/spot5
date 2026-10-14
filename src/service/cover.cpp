@@ -245,6 +245,12 @@ void CoverLoader::finished(const std::string &url)
 
 // The cover's bytes: from the cache if there, else downloaded (and cached).
 // Empty if the download failed.
+void CoverLoader::take_download_stats(int &count, long long &total_ms)
+{
+    count = downloads_.exchange(0, std::memory_order_relaxed);
+    total_ms = download_ms_.exchange(0, std::memory_order_relaxed);
+}
+
 std::vector<std::uint8_t> CoverLoader::fetch(const std::string &url, Connection &connection)
 {
     const std::string path = cache_dir_.empty() ? std::string() : cache_dir_ + "/" + cache_name(url);
@@ -267,8 +273,11 @@ std::vector<std::uint8_t> CoverLoader::fetch(const std::string &url, Connection 
             connection.host = host;
         }
         bell::HTTPClient::Response &response = *connection.response;
+        const long long started = now_ms();
         response.get(url);
         bytes = response.bytes();
+        downloads_.fetch_add(1, std::memory_order_relaxed);
+        download_ms_.fetch_add(now_ms() - started, std::memory_order_relaxed);
         const int status = response.statusCode();
         if (!response.hasContentLength())
             connection.response.reset(); // the body's end is unknown: no further request on it

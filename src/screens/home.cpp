@@ -123,8 +123,10 @@ class Home final : public Screen
             previous_ = shown_;
             shown_ = {*focused, shelves()[static_cast<std::size_t>(row_)].title};
             hero_.start(context_.settings.reduced_motion ? 0.12f : 0.42f);
+            focus_still_ = 0.0f;
         }
         hero_.update(dt);
+        focus_still_ += dt;
         apply_palette();
         for (ui::SpringColor &colour : palette_)
             colour.update(dt, 4.0f);
@@ -536,8 +538,8 @@ class Home final : public Screen
     }
 
     // Covers about to come into view start loading before they get there:
-    // the next two shelves, a screen further along the focused one, and the
-    // banners of the cards beside the focus (the biggest downloads).
+    // the next two shelves, a screen further along the focused one, and,
+    // once the focus rests, the banners of the cards beside it.
     void prefetch() const
     {
         const int last = std::min(row_ + 2, static_cast<int>(shelves().size()) - 1);
@@ -548,7 +550,9 @@ class Home final : public Screen
                 if (item_rect(r, c).x < 2.0f * gfx::kVirtualWidth)
                     art(shelf.cards[static_cast<std::size_t>(c)].image);
         }
-        if (is_grid(row_) || row_ < 0 || row_ >= static_cast<int>(shelves().size()))
+        // Banners only once the focus rests: scrolling fast along a shelf would
+        // otherwise decode a big banner for every card passed.
+        if (focus_still_ < 0.4f || is_grid(row_) || row_ < 0 || row_ >= static_cast<int>(shelves().size()))
             return;
         const Shelf &shelf = shelves()[static_cast<std::size_t>(row_)];
         const int index = rows_[static_cast<std::size_t>(row_)].index;
@@ -674,6 +678,7 @@ class Home final : public Screen
     Hero shown_;         // the card the hero shows
     Hero previous_;      // ... and the one it is fading out
     tween::Timer hero_;
+    float focus_still_ = 0.0f; // seconds since the focus last moved
     ui::SpringColor palette_[4];
     tween::Spring row_position_;
     ui::SpringRect ring_;

@@ -16,6 +16,7 @@
 
 #include <pthread.h>
 
+#include <atomic>
 #include <condition_variable>
 #include <cstdint>
 #include <deque>
@@ -60,6 +61,10 @@ class CoverLoader
     // A finished cover, once each; empty while nothing new is ready.
     std::optional<Cover> take();
 
+    // Network downloads since the last call (disk-cache hits not counted)
+    // and the milliseconds they took in total.
+    void take_download_stats(int &count, long long &total_ms);
+
     // Larger than this is halved before upload. 2880 keeps original album
     // art (~2000 px) and Spotify's wide banners (2660 px) whole for 4K.
     static constexpr int kMaxSide = 2880;
@@ -69,6 +74,8 @@ class CoverLoader
     bool given_up(const std::string &url);
 
   private:
+    std::atomic<int> downloads_{0};
+    std::atomic<long long> download_ms_{0};
     static void *entry(void *self);
     void run();
     // A worker's kept-alive connection, reused for every cover from one host.

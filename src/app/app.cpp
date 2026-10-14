@@ -279,12 +279,16 @@ class CardArt
     void pump()
     {
         ++frame_;
-        // A few uploads per frame keep scrolling smooth.
-        for (int i = 0; i < 4; ++i)
+        // A few uploads per frame keep scrolling smooth: up to 4 MB of pixels
+        // (one big banner is 14 MB, so it goes alone), at least one.
+        constexpr std::size_t kUploadBytes = 4u << 20;
+        std::size_t uploaded = 0;
+        for (int i = 0; i < 4 && uploaded < kUploadBytes; ++i)
         {
             std::optional<service::Cover> cover = loader_.take();
             if (!cover)
                 break;
+            uploaded += cover->rgba.size();
             Entry &entry = entries_[cover->url];
             if (entry.texture)
                 glDeleteTextures(1, &entry.texture);
@@ -321,6 +325,8 @@ class CardArt
         found->second.used = frame_;
         return {found->second.texture, found->second.palette, found->second.width, found->second.height};
     }
+
+    void download_stats(int &count, long long &total_ms) { loader_.take_download_stats(count, total_ms); }
 
     // Forgets every cover (Clear cache): they load again when drawn. Safe
     // between frames: the last frame was presented, the next is not drawn yet.
@@ -447,6 +453,8 @@ void App::run()
     std::uint64_t frames = 0;
     std::int64_t status_at = last;       // the last per-minute status line
     std::uint64_t status_frames = 0;     // frames drawn since then
+    float worst_frame = 0.0f;            // the longest frame since then, in seconds
+    int slow_frames = 0;                 // frames over 25 ms since then
 
     for (;;)
     {
@@ -455,6 +463,11 @@ void App::run()
         const std::int64_t now = sys::monotonic_us();
         float dt = frames == 0 ? 1.0f / 60.0f : static_cast<float>(now - last) / 1e6f;
         last = now;
+        if (frames > 0)
+        {
+            worst_frame = std::max(worst_frame, dt);
+            slow_frames += dt > 0.025f ? 1 : 0;
+        }
         dt = std::min(dt, 0.05f);
 
         if (!pad.is_open())
@@ -550,10 +563,18 @@ void App::run()
             std::size_t live = 0, peak = 0, failures = 0;
             hui_heap_stats(&live, &peak, nullptr, &failures);
             const double fps = static_cast<double>(status_frames) * 1e6 / static_cast<double>(at - status_at);
-            sys::log("[APP] heap live %zu MB, peak %zu MB of %zu MB, failures %zu; %.1f fps", live >> 20, peak >> 20,
-                     hui_heap_capacity() >> 20, failures, fps);
+            int downloads = 0;
+            long long download_ms = 0;
+            card_art.download_stats(downloads, download_ms);
+            sys::log("[APP] heap live %zu MB, peak %zu MB of %zu MB, failures %zu; %.1f fps, worst frame %.0f ms, "
+                     "%d over 25 ms; covers downloaded %d, %lld ms each",
+                     live >> 20, peak >> 20, hui_heap_capacity() >> 20, failures, fps,
+                     static_cast<double>(worst_frame) * 1000.0, slow_frames, downloads,
+                     downloads > 0 ? download_ms / downloads : 0LL);
             status_at = at;
             status_frames = 0;
+            worst_frame = 0.0f;
+            slow_frames = 0;
         }
     }
 }
