@@ -413,6 +413,7 @@ void App::run()
         sys::log("[APP] fatal: renderer or fonts failed");
         sys::park();
     }
+    display_face.add_fallback(&semibold, fonts.semibold.texture); // Montserrat has no Greek
 
     const int utc_minutes = console_utc_minutes();
     Controller controller;

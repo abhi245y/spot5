@@ -463,6 +463,7 @@ int main(int argc, char **argv)
         !load_font(renderer, assets + "/fonts/montserrat-medium.huifont", display, fonts.display) ||
         !load_font(renderer, assets + "/fonts/dejavu-sans-mono.huifont", mono, fonts.mono))
         return 1;
+    display.add_fallback(&semibold, fonts.semibold.texture); // Montserrat has no Greek
 
     for (int i = 0; i < 2; ++i)
     {
