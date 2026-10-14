@@ -153,26 +153,30 @@ void Shell::update(const Model &model, const InputFrame &input, float dt, ui::Fe
 
     // The touchpad, on any screen: a tap (released within kTapSeconds)
     // opens Control Room or closes it; held for kQuitSeconds it quits, with a
-    // ring filling in the middle and a rumble growing every half second.
+    // ring filling in the middle and a rumble each second, growing.
     // Timed by the real clock: dt is clamped, so slow frames would stretch it.
     bool tapped = false;
     if (input.is_held(Action::touch) || input.is_pressed(Action::touch))
     {
         const std::int64_t now = hui::sys::monotonic_us();
         if (touch_down_us_ == 0)
+        {
             touch_down_us_ = now;
+            hui::sys::log("[UI] touchpad down");
+        }
         const float before = touch_held_;
         touch_held_ = static_cast<float>(now - touch_down_us_) / 1e6f;
         if (touch_held_ >= kTapSeconds && !quit_sent_)
         {
             quit_progress_ = std::min(1.0f, touch_held_ / kQuitSeconds);
-            if (std::floor(touch_held_ * 2.0f) != std::floor(before * 2.0f))
-                feedback.rumble(0.12f + 0.5f * quit_progress_, 0.08f);
+            // One pulse per second, in step with the countdown, each stronger.
+            if (std::floor(touch_held_) != std::floor(before) && touch_held_ < kQuitSeconds)
+                feedback.rumble(0.25f + 0.45f * quit_progress_, 0.1f);
             if (touch_held_ >= kQuitSeconds)
             {
                 quit_sent_ = true;
                 feedback.rumble(1.0f, 0.3f);
-                hui::sys::log("[UI] touchpad held %.0f s: quit", static_cast<double>(kQuitSeconds));
+                hui::sys::log("[UI] touchpad held %.2f s: quit", static_cast<double>(touch_held_));
                 commands.push_back(Command::quit);
             }
         }
