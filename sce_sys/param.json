@@ -7,23 +7,16 @@
     "pagetableMemorySizeInMib": 256,
     "vaRangeInGib": 512
   },
-  "applicationCategoryType": 0,
+  "applicationCategoryType": 65536,
   "applicationDrmType": "free",
   "attribute": 0,
   "attribute2": 0,
   "attribute3": 0,
   "conceptId": "99061",
-  "contentBadgeType": 1,
+  "contentBadgeType": 2,
   "contentId": "UP9000-PPSA99061_00-PS5SPOTIFYTEST01",
   "contentVersion": "01.000.000",
   "downloadDataSize": 256,
-  "gameIntent": {
-    "permittedIntents": [
-      {
-        "intentType": "launchActivity"
-      }
-    ]
-  },
   "kernel": {
     "cpuPageTableSize": 268435456,
     "gpuPageTableSize": 268435456
