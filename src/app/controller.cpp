@@ -308,6 +308,12 @@ void Controller::step_pairing()
 {
     std::string error;
     std::shared_ptr<cspot::LoginBlob> login = pairing_->take_login(error);
+    if (pairing_->lost())
+    {
+        pairing_.reset();
+        set_state(State::Error, "Pairing stopped. Try again.");
+        return;
+    }
     if (!error.empty())
         hui::sys::log("[APP] pairing: %s", error.c_str()); // the phone can try again
     if (!login)

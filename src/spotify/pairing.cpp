@@ -4,16 +4,19 @@
 #include "spotify/pairing.hpp"
 
 #include <arpa/inet.h>
+#include <fcntl.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <unistd.h>
 
 #include <algorithm>
 #include <cerrno>
+#include <cstdlib>
 #include <cstring>
 #include <exception>
 
-#include "BellHTTPServer.h"
+#include "civetweb.h"
 #include "LoginBlob.h"
 #include "app/config.hpp"
 #include "platform/ps5/system.hpp"
@@ -24,9 +27,10 @@ namespace spotify
 namespace
 {
 
-// Apps may not bind the mDNS port (EACCES), payloads may: elfldr runs the
-// helper (helper/mdns_helper.c), which advertises us while this server
-// answers and exits by itself afterwards.
+// Apps may not bind the mDNS port, and a media app may not listen at all
+// (EACCES); payloads may: elfldr runs the helper (helper/mdns_helper.c),
+// which advertises us and answers the phone, and talks to us over the
+// control link below.
 constexpr const char *kHelper = "/app0/assets/mdns-helper.elf";
 constexpr int kElfLoaderPort = 9021;
 
@@ -68,38 +72,44 @@ bool send_helper(std::string &error)
     return true;
 }
 
-constexpr int kPort = 7864; // same as cspot's CLI
+constexpr int kControlPort = 7865; // the helper's lock port
+// A real login is about 1 KB; the helper refuses anything far larger.
+constexpr std::size_t kMaxBody = 32 * 1024;
 
-// Why the server could not listen: civetweb only says "Failed to setup server
-// ports", so repeat its steps on the port and log the first one that fails.
-void log_bind_failure()
+int connect_control()
 {
     const int fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (fd < 0)
-    {
-        hui::sys::log("[APP] pairing: socket() failed: errno %d (%s)", errno, std::strerror(errno));
-        return;
-    }
-    const int on = 1;
-    if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on)) != 0)
-        hui::sys::log("[APP] pairing: SO_REUSEADDR failed: errno %d (%s)", errno, std::strerror(errno));
-    sockaddr_in address{};
-    address.sin_family = AF_INET;
-    address.sin_port = htons(kPort);
-    address.sin_addr.s_addr = htonl(INADDR_ANY);
-    if (bind(fd, reinterpret_cast<sockaddr *>(&address), sizeof(address)) != 0)
-        hui::sys::log("[APP] pairing: bind(0.0.0.0:%d) failed: errno %d (%s)", kPort, errno, std::strerror(errno));
-    else if (listen(fd, 8) != 0)
-        hui::sys::log("[APP] pairing: listen(%d) failed: errno %d (%s)", kPort, errno, std::strerror(errno));
-    else
-        hui::sys::log("[APP] pairing: a plain socket can listen on %d; civetweb's own setup failed", kPort);
-    close(fd);
+    sockaddr_in helper{};
+    helper.sin_len = sizeof(helper);
+    helper.sin_family = AF_INET;
+    helper.sin_port = htons(kControlPort);
+    helper.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    if (fd >= 0 && connect(fd, reinterpret_cast<sockaddr *>(&helper), sizeof(helper)) == 0)
+        return fd;
+    if (fd >= 0)
+        close(fd);
+    return -1;
 }
-// A real login is about 1 KB; refuse anything far larger from the network.
-constexpr long long kMaxBody = 16 * 1024;
 
-// Spotify's "OK, logging in" reply to the phone's POST.
-constexpr const char *kPostReply = R"({"status":101,"spotifyError":0,"statusString":"ERROR-OK"})";
+// Connects to the helper elfldr just started and waits for its "READY".
+int open_control()
+{
+    for (int attempt = 0; attempt < 30; ++attempt) // about 6 s
+    {
+        const int fd = connect_control();
+        if (fd >= 0)
+        {
+            timeval timeout{1, 0};
+            setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+            char ready[6];
+            if (recv(fd, ready, sizeof(ready), MSG_WAITALL) == 6 && std::memcmp(ready, "READY\n", 6) == 0)
+                return fd;
+            close(fd); // a helper on its way out
+        }
+        hui::sys::sleep_us(200000);
+    }
+    return -1;
+}
 
 } // namespace
 
@@ -110,61 +120,85 @@ std::unique_ptr<Pairing> Pairing::start(const std::string &device_name, std::str
     {
         pairing->blob_ = std::make_shared<cspot::LoginBlob>(device_name);
         pairing->info_json_ = pairing->blob_->buildZeroconfInfo();
-        pairing->server_ = std::make_unique<bell::BellHTTPServer>(kPort);
     }
     catch (const std::exception &e)
     {
         error = std::string("Pairing could not start (") + e.what() + ")";
-        log_bind_failure();
         return nullptr;
     }
-
-    Pairing *self = pairing.get();
-    auto &server = *pairing->server_;
-    server.registerGet("/spotify_info", [self](mg_connection *) {
-        return self->server_->makeJsonResponse(self->info_json_);
-    });
-    server.registerPost("/spotify_info", [self](mg_connection *conn) {
-        const mg_request_info *request = mg_get_request_info(conn);
-        if (request->content_length <= 0 || request->content_length > kMaxBody)
-            return self->server_->makeJsonResponse(R"({"status":102})", 400);
-
-        std::string body(static_cast<size_t>(request->content_length), '\0');
-        body.resize(static_cast<size_t>(std::max(0, mg_read(conn, body.data(), body.size()))));
-        mg_header fields[10];
-        const int count = mg_split_form_urlencoded(body.data(), fields, 10);
-        std::map<std::string, std::string> query;
-        for (int i = 0; i < count; i++)
-            query[fields[i].name] = fields[i].value ? fields[i].value : "";
-
-        hui::sys::log("[APP] pairing: login received from phone");
-        {
-            std::scoped_lock guard(self->lock_);
-            self->query_ = std::move(query);
-        }
-        return self->server_->makeJsonResponse(kPostReply);
-    });
-
     if (!send_helper(error))
         return nullptr;
-    hui::sys::log("[APP] pairing: \"%s\" on port %d, mDNS helper sent", device_name.c_str(), kPort);
+    pairing->control_ = open_control();
+    const std::string hello = "INFO " + std::to_string(pairing->info_json_.size()) + "\n" + pairing->info_json_;
+    if (pairing->control_ < 0 ||
+        send(pairing->control_, hello.data(), hello.size(), 0) != static_cast<ssize_t>(hello.size()))
+    {
+        error = "The pairing helper did not answer";
+        return nullptr;
+    }
+    fcntl(pairing->control_, F_SETFL, fcntl(pairing->control_, F_GETFL) | O_NONBLOCK);
+    hui::sys::log("[APP] pairing: \"%s\" served by the helper", device_name.c_str());
     return pairing;
 }
 
 Pairing::~Pairing()
 {
-    // The helper sees the server gone and stops advertising. Stop the server (joins its threads) before the handlers' `this` goes.
-    if (server_)
-        server_->close();
+    if (control_ < 0)
+        return;
+    // The helper sees the link close and exits; wait until its lock port is
+    // free, so a new pairing (after a rename) gets a new helper.
+    close(control_);
+    for (int attempt = 0; attempt < 15; ++attempt)
+    {
+        const int fd = connect_control();
+        if (fd < 0)
+            break;
+        close(fd);
+        hui::sys::sleep_us(200000);
+    }
+}
+
+// The next "LOGIN <length>\n<form>" from the helper, decoded, if whole.
+std::optional<std::map<std::string, std::string>> Pairing::next_query()
+{
+    char chunk[4096];
+    for (;;)
+    {
+        const ssize_t got = recv(control_, chunk, sizeof(chunk), 0);
+        if (got > 0)
+            inbox_.append(chunk, static_cast<std::size_t>(got));
+        else
+        {
+            if (got == 0 || (errno != EAGAIN && errno != EWOULDBLOCK))
+                lost_ = true;
+            break;
+        }
+    }
+    const std::size_t line = inbox_.find('\n');
+    if (line == std::string::npos || inbox_.compare(0, 6, "LOGIN ") != 0)
+        return std::nullopt;
+    const std::size_t length = std::strtoul(inbox_.c_str() + 6, nullptr, 10);
+    if (length == 0 || length > kMaxBody)
+    {
+        lost_ = true; // not the helper we know
+        return std::nullopt;
+    }
+    if (inbox_.size() < line + 1 + length)
+        return std::nullopt;
+    std::string form = inbox_.substr(line + 1, length);
+    inbox_.erase(0, line + 1 + length);
+    mg_header fields[10];
+    const int count = mg_split_form_urlencoded(form.data(), fields, 10);
+    std::map<std::string, std::string> query;
+    for (int i = 0; i < count; i++)
+        query[fields[i].name] = fields[i].value ? fields[i].value : "";
+    hui::sys::log("[APP] pairing: login received from phone");
+    return query;
 }
 
 std::shared_ptr<cspot::LoginBlob> Pairing::take_login(std::string &error)
 {
-    std::optional<std::map<std::string, std::string>> query;
-    {
-        std::scoped_lock guard(lock_);
-        query.swap(query_);
-    }
+    std::optional<std::map<std::string, std::string>> query = next_query();
     if (!query)
         return nullptr;
     // ponytail: cspot trusts the blob's inner lengths once decrypted; a hostile
