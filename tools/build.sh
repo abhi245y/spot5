@@ -65,6 +65,10 @@ if category == 0:
         raise SystemExit("game param.json must permit the launchActivity intent")
 elif "gameIntent" in value:
     raise SystemExit("media param.json must not contain gameIntent")
+# The kernel refuses to launch a media app whose CPU page table is larger
+# (13.00 klog: "kernel.cpuPageTableSize ... min: 2097152, max: 134217728").
+if category == 65536 and value.get("kernel", {}).get("cpuPageTableSize", 0) > 134217728:
+    raise SystemExit("media param.json: kernel.cpuPageTableSize must be at most 134217728")
 
 localized = value.get("localizedParameters", {})
 language = localized.get("defaultLanguage", "")
