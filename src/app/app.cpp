@@ -210,7 +210,10 @@ class Covers
     }
 
     // Fills in the model's cover once it is loaded; asks for it otherwise.
-    void apply(screens::Track &track)
+    // Until then, the same cover at 300 px from `small` (Home's and the pages'
+    // covers, often loaded already) stands in, so Now Playing and the mini
+    // player never wait on the full-size download.
+    void apply(screens::Track &track, const std::function<screens::Art(const std::string &)> &small)
     {
         const std::string url = service::home::larger_cover(track.image_url);
         loader_.request(url);
@@ -232,6 +235,16 @@ class Covers
             {
                 track.art = e.texture;
                 track.palette = e.palette;
+                track.has_palette = true;
+            }
+        }
+        if (!track.art)
+        {
+            const screens::Art stand_in = small(service::home::album_cover_at(track.image_url, "1e02"));
+            if (stand_in.texture)
+            {
+                track.art = stand_in.texture;
+                track.palette = stand_in.palette;
                 track.has_palette = true;
             }
         }
@@ -454,7 +467,9 @@ void App::run()
         model.device_name = settings.device_name;
         model.about = about;
         if (model.has_track)
-            covers.apply(model.track);
+            covers.apply(model.track, [&card_art](const std::string &url) {
+                return url.empty() ? screens::Art{} : card_art.get(url);
+            });
         card_art.pump();
         // Launch: every Home cover, before the loader hands over.
         if (model.step == screens::Step::artwork && model.home)

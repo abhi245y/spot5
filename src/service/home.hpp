@@ -77,6 +77,17 @@ inline std::string larger_cover(const std::string &url)
     return "https://i.scdn.co/image/ab67616d000082c1" + url.substr(kPrefix.size());
 }
 
+// The same album cover at another size: album cover links differ only in the
+// four hex digits after "ab67616d0000" (4851 64 px, 1e02 300 px, b273 640 px,
+// 82c1 the original). Anything else (playlist, artist art) comes back empty.
+inline std::string album_cover_at(const std::string &url, const char *size_code)
+{
+    static const std::string kPrefix = "https://i.scdn.co/image/ab67616d0000";
+    if (url.rfind(kPrefix, 0) != 0 || url.size() < kPrefix.size() + 4)
+        return {};
+    return kPrefix + size_code + url.substr(kPrefix.size() + 4);
+}
+
 // Liked Songs appears on Home as an anonymised URI; playback needs the real one.
 std::string playable_uri(const std::string &uri, const std::string &username);
 
