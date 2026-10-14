@@ -116,6 +116,45 @@ Spot5 needs no configuration file. To override the Spotify client ID it uses, pl
 - Spotify DJ can't be played from the console yet.
 - Song and artist names with accented letters may show `?` in place of those letters.
 
+## Roadmap
+
+Spot5 grows in small releases, each tested on a console before it ships. The order puts groundwork first (speed and the shared song menu many later features build on), then the biggest everyday gaps, then the showpieces.
+
+### v1.0.0 — first release ✅
+Spotify Connect pairing and saved login, Home, Your Library, playlist, album and artist pages, Now Playing with queue and scrubber, settings, native 4K, hold-to-quit.
+
+### v1.1 — Polish and speed
+- [ ] Button hints drawn in Spot5's own style on every screen
+- [ ] Faster artwork: smarter cover fetching, caching and decoding
+- [ ] Accented and non-Latin letters in titles and names
+
+### v1.2 — The song menu
+- [ ] An options menu for any song — from playlists, albums, artist pages, the queue and Now Playing
+- [ ] Go to the song's album or artist
+- [ ] Add to Liked Songs, or to one of your playlists
+- [ ] Start a song radio
+- [ ] Song details (album, release date, credits), with links between song, album and artist pages
+
+### v1.3 — Search
+- [ ] Search songs, artists, albums and playlists with the on-screen keyboard
+- [ ] Recent searches and quick results while you type
+
+### v1.4 — Profiles and accounts
+- [ ] Your profile picture across the app
+- [ ] More than one Spotify account on one console, switchable from Settings
+
+### v1.5 — Lyrics
+- [ ] Time-synced lyrics on Now Playing
+
+### v1.6 — Canvas
+- [ ] The short looping videos some songs show, behind Now Playing
+
+## Releases and branches
+
+- `main` always holds the latest tested code; every release is a tag on it (`v1.0.0`, `v1.1.0`, ...) with a [GitHub Release](../../releases) carrying the ready-to-install `PPSA99061.zip`.
+- Each roadmap item is built on its own `feature/<name>` branch and merged into `main` through a pull request once it works on a console.
+- Version numbers follow [Semantic Versioning](https://semver.org/): new features raise the minor number, fixes the patch number. The console shows the same version in Settings › About.
+
 ## Building from source
 
 Spot5 builds on Linux (or WSL) and fetches its PS5 toolchain itself.
