@@ -134,8 +134,13 @@ bool take_pixels(const std::uint8_t *pixels, int width, int height, int max_side
 
 } // namespace
 
-int clear_cover_cache(const std::string &dir)
+namespace
 {
+
+void *clear_entry(void *argument)
+{
+    const std::unique_ptr<std::string> owned(static_cast<std::string *>(argument));
+    const std::string &dir = *owned;
     std::scoped_lock guard(g_index);
     int removed = 0;
     const std::string index = dir + "/" + kIndex;
@@ -156,7 +161,23 @@ int clear_cover_cache(const std::string &dir)
     }
     std::remove(index.c_str());
     hui::sys::log("[APP] cache: %d covers deleted", removed);
-    return removed;
+    return nullptr;
+}
+
+} // namespace
+
+void clear_cover_cache(const std::string &dir)
+{
+    pthread_attr_t attr;
+    pthread_attr_init(&attr);
+    pthread_attr_setstacksize(&attr, 256 << 10);
+    pthread_t thread;
+    auto *argument = new std::string(dir);
+    if (pthread_create(&thread, &attr, &clear_entry, argument) == 0)
+        pthread_detach(thread);
+    else
+        clear_entry(argument); // no thread: clear here, frozen or not
+    pthread_attr_destroy(&attr);
 }
 
 CoverLoader::CoverLoader(std::size_t max_queued, int workers, std::string cache_dir)
