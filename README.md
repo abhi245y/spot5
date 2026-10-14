@@ -125,10 +125,10 @@ Spot5 grows in small releases, each tested on a console before it ships. The ord
 ### v1.0.0 — first release ✅
 A standalone app in native 4K: Home, Your Library, playlist, album and artist pages, Now Playing with queue and scrubber, settings and hold-to-quit; one-time login from your phone, and Spotify Connect.
 
-### v1.1 — Polish and speed
-- [ ] Button hints drawn in Spot5's own style on every screen
-- [ ] Faster artwork: smarter cover fetching, caching and decoding
-- [ ] Accented, Greek, Cyrillic and Malayalam letters in titles and names, with Malayalam's joined letters drawn correctly
+### v1.1.0 — Polish and speed ✅
+- [x] Button hints drawn in Spot5's own style on every screen
+- [x] Faster artwork: smarter cover fetching, caching and decoding
+- [x] Accented, Greek, Cyrillic and Malayalam letters in titles and names, with Malayalam's joined letters drawn correctly
 
 ### v1.2 — The song menu
 - [ ] An options menu for any song — from playlists, albums, artist pages, the queue and Now Playing

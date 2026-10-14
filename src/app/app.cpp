@@ -11,6 +11,7 @@
 
 #include <chrono>
 #include <cstdint>
+#include <cstdio>
 #include <deque>
 #include <unordered_map>
 #include <span>
@@ -155,8 +156,11 @@ screens::About about_facts()
 {
     screens::About about;
     auto param = nlohmann::json::parse(read_file("/app0/sce_sys/param.json"), nullptr, false);
-    if (!param.is_discarded())
-        about.version = param.value("contentVersion", std::string());
+    // "01.001.000" shows as "1.1.0", the release tag's version.
+    int major = 0, minor = 0, patch = 0;
+    if (!param.is_discarded() &&
+        std::sscanf(param.value("contentVersion", std::string()).c_str(), "%d.%d.%d", &major, &minor, &patch) == 3)
+        about.version = std::to_string(major) + "." + std::to_string(minor) + "." + std::to_string(patch);
 #ifdef CSPOT_REV
     // Built in as branch_commit (the build's defines allow no other characters).
     about.engine = SPT_STRING(CSPOT_REV);
