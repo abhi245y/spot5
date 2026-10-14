@@ -39,21 +39,25 @@ export PS5_CLANG USE_CCACHE PS5_HOST FTP_PORT PS5_FTP_USER PS5_FTP_PASSWORD DEPL
 export APP_DEFINITIONS APP_INCLUDE_PATHS APP_STATIC_ARCHIVES APP_IMPORT_STUBS
 
 .PHONY: app deps opengl deploy clean helper
+# The PS5 SDK first, once: the other steps compile with it (and would race to fetch it).
+SDK_READY := .deps/native/ps5-payload-sdk/bin/prospero-clang
+$(SDK_READY):
+	@bash tools/setup-native-dependencies.sh
 app: build/deps/libbell.a opengl helper
 	@bash tools/build.sh
 # The mDNS helper payload (sent to elfldr while pairing): payload SDK, plain C.
 MDNSSVC := $(BELL)/external/mdnssvc
 PAYLOAD_SDK := $(abspath .deps/native/ps5-payload-sdk)
 helper: build/mdns-helper.elf
-build/mdns-helper.elf: helper/mdns_helper.c $(MDNSSVC)/mdns.c $(MDNSSVC)/mdnsd.c
+build/mdns-helper.elf: helper/mdns_helper.c $(MDNSSVC)/mdns.c $(MDNSSVC)/mdnsd.c | $(SDK_READY)
 	@mkdir -p build
 	PS5_PAYLOAD_SDK=$(PAYLOAD_SDK) $(PAYLOAD_SDK)/bin/prospero-clang -O2 -Wall -I$(MDNSSVC) \
 		-o $@ $^ -lpthread
-deps:
+deps: | $(SDK_READY)
 	@bash tools/build-deps.sh
-build/deps/libbell.a:
+build/deps/libbell.a: | $(SDK_READY)
 	@bash tools/build-deps.sh
-opengl:
+opengl: | $(SDK_READY)
 	@bash tools/prepare-opengl.sh
 deploy:
 	@bash tools/deploy.sh

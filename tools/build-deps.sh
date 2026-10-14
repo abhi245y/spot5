@@ -28,7 +28,6 @@ webp_tar="$root/.deps/src/libwebp-$webp_version.tar.gz"
 webp="$root/.deps/src/libwebp-$webp_version"
 
 mkdir -p "$root/.deps/src" "$out"
-bash "$root/tools/setup-native-dependencies.sh" >/dev/null # the PS5 SDK the compiler wrapper uses
 
 # cspot and bell are vendored in third_party/cspot (VERSION says which commits).
 echo "cspot/bell: $(grep -E '^(cspot|bell)' "$root/third_party/cspot/VERSION" | awk '{print $1"@"$2}' | tr '\n' ' ')"
