@@ -1,0 +1,93 @@
+syntax = "proto2";
+
+// Minimal subset of spotify.login5.v3 needed to get an access token from
+// stored credentials, including hashcash challenges. Field numbers match
+// librespot's protocol/proto/spotify/login5/v3/*.proto.
+
+message Login5ClientInfo {
+  optional string client_id = 1;
+  optional string device_id = 2;
+}
+
+message Login5StoredCredential {
+  optional string username = 1;
+  optional bytes data = 2;
+}
+
+message Login5Duration {
+  optional int64 seconds = 1;
+  optional int32 nanos = 2;
+}
+
+message Login5HashcashChallenge {
+  optional bytes prefix = 1;
+  optional int32 length = 2;
+}
+
+message Login5HashcashSolution {
+  optional bytes suffix = 1;
+  optional Login5Duration duration = 2;
+}
+
+// Only used to detect that a code (SMS) challenge was sent; not solvable here.
+message Login5CodeChallenge {
+  optional int32 method = 1;
+}
+
+message Login5Challenge {
+  oneof challenge {
+    Login5HashcashChallenge hashcash = 1;
+    Login5CodeChallenge code = 2;
+  }
+}
+
+message Login5Challenges {
+  repeated Login5Challenge challenges = 1;
+}
+
+message Login5ChallengeSolution {
+  oneof solution {
+    Login5HashcashSolution hashcash = 1;
+  }
+}
+
+message Login5ChallengeSolutions {
+  repeated Login5ChallengeSolution solutions = 1;
+}
+
+message Login5Request {
+  optional Login5ClientInfo client_info = 1;
+  optional bytes login_context = 2;
+  optional Login5ChallengeSolutions challenge_solutions = 3;
+  oneof login_method {
+    Login5StoredCredential stored_credential = 100;
+  }
+}
+
+message Login5Ok {
+  optional string username = 1;
+  optional string access_token = 2;
+  optional bytes stored_credential = 3;
+  optional int32 access_token_expires_in = 4;
+}
+
+enum Login5Error {
+  LOGIN5_UNKNOWN_ERROR = 0;
+  LOGIN5_INVALID_CREDENTIALS = 1;
+  LOGIN5_BAD_REQUEST = 2;
+  LOGIN5_UNSUPPORTED_LOGIN_PROTOCOL = 3;
+  LOGIN5_TIMEOUT = 4;
+  LOGIN5_UNKNOWN_IDENTIFIER = 5;
+  LOGIN5_TOO_MANY_ATTEMPTS = 6;
+  LOGIN5_INVALID_PHONENUMBER = 7;
+  LOGIN5_TRY_AGAIN_LATER = 8;
+}
+
+message Login5Response {
+  optional bytes login_context = 5;
+  oneof response {
+    Login5Ok ok = 1;
+    Login5Error error = 2;
+    Login5Challenges challenges = 3;
+  }
+}

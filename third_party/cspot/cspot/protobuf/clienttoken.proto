@@ -1,0 +1,107 @@
+syntax = "proto2";
+
+// Minimal subset of spotify.clienttoken.http.v0 (and data.v0 connectivity)
+// needed to get a client token as a Linux desktop client, including the
+// hashcash challenge. Field numbers match librespot's
+// protocol/proto/spotify/clienttoken/v0/clienttoken_http.proto and
+// protocol/proto/connectivity.proto.
+
+enum ClientTokenRequestType {
+  REQUEST_UNKNOWN = 0;
+  REQUEST_CLIENT_DATA_REQUEST = 1;
+  REQUEST_CHALLENGE_ANSWERS_REQUEST = 2;
+}
+
+enum ClientTokenResponseType {
+  RESPONSE_UNKNOWN = 0;
+  RESPONSE_GRANTED_TOKEN_RESPONSE = 1;
+  RESPONSE_CHALLENGES_RESPONSE = 2;
+}
+
+enum ClientTokenChallengeType {
+  CHALLENGE_UNKNOWN = 0;
+  CHALLENGE_CLIENT_SECRET_HMAC = 1;
+  CHALLENGE_EVALUATE_JS = 2;
+  CHALLENGE_HASH_CASH = 3;
+}
+
+message NativeDesktopLinuxData {
+  optional string system_name = 1;
+  optional string system_release = 2;
+  optional string system_version = 3;
+  optional string hardware = 4;
+}
+
+message PlatformSpecificData {
+  oneof data {
+    NativeDesktopLinuxData desktop_linux = 5;
+  }
+}
+
+message ConnectivitySdkData {
+  optional PlatformSpecificData platform_specific_data = 1;
+  optional string device_id = 2;
+}
+
+message ClientDataRequest {
+  optional string client_version = 1;
+  optional string client_id = 2;
+  oneof data {
+    ConnectivitySdkData connectivity_sdk_data = 3;
+  }
+}
+
+message HashCashAnswer {
+  optional string suffix = 1;
+}
+
+message ChallengeAnswer {
+  optional ClientTokenChallengeType ChallengeType = 1;
+  oneof answer {
+    HashCashAnswer hash_cash = 4;
+  }
+}
+
+message ChallengeAnswersRequest {
+  optional string state = 1;
+  repeated ChallengeAnswer answers = 2;
+}
+
+message ClientTokenRequest {
+  optional ClientTokenRequestType request_type = 1;
+  oneof request {
+    ClientDataRequest client_data = 2;
+    ChallengeAnswersRequest challenge_answers = 3;
+  }
+}
+
+message GrantedTokenResponse {
+  optional string token = 1;
+  optional int32 expires_after_seconds = 2;
+  optional int32 refresh_after_seconds = 3;
+}
+
+message HashCashParameters {
+  optional int32 length = 1;
+  optional string prefix = 2;
+}
+
+message ClientTokenChallenge {
+  optional ClientTokenChallengeType type = 1;
+  oneof parameters {
+    HashCashParameters evaluate_hashcash_parameters = 4;
+  }
+}
+
+message ChallengesResponse {
+  optional string state = 1;
+  repeated ClientTokenChallenge challenges = 2;
+}
+
+message ClientTokenResponse {
+  optional ClientTokenResponseType response_type = 1;
+  oneof response {
+    GrantedTokenResponse granted_token = 2;
+    ChallengesResponse challenges = 3;
+  }
+}

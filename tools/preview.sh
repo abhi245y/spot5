@@ -36,7 +36,7 @@ for source in "${sources[@]}"; do
     else
         ninja_inputs=("$source" "$cxx")
         ninja_edge CXX "$object" "$cxx" -std=c++20 -O2 -Wall -Wextra \
-            -DGL_GLEXT_PROTOTYPES=1 -I"$root/src" -isystem "$root/../cspot/cspot/bell/external/nlohmann_json/include" \
+            -DGL_GLEXT_PROTOTYPES=1 -I"$root/src" -isystem "$root/third_party/cspot/cspot/bell/external/nlohmann_json/include" \
             -MD -MF "$object.d" -c "$source" -o "$object"
     fi
     objects+=("$object")

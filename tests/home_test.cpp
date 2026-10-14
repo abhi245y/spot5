@@ -1,6 +1,6 @@
 // spot5 - Host check for service/home (casita + traits parsing, cache).
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Build/run: clang++ -std=c++20 -Isrc -I../cspot/cspot/bell/external/nlohmann_json/include \
+// Build/run: clang++ -std=c++20 -Isrc -Ithird_party/cspot/cspot/bell/external/nlohmann_json/include \
 //   tests/home_test.cpp src/service/home.cpp -o /tmp/ht && /tmp/ht [home.pb traits.pb]
 // With the two optional files (real replies, kept out of git) it also prints
 // the page they make.

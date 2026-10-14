@@ -1,0 +1,13 @@
+Login5ClientInfo.client_id max_size:64
+Login5ClientInfo.device_id max_size:64
+Login5StoredCredential.username max_size:64
+Login5StoredCredential.data max_size:512
+Login5HashcashChallenge.prefix type:FT_POINTER
+Login5HashcashSolution.suffix max_size:16
+Login5Challenges.challenges max_count:4
+Login5ChallengeSolutions.solutions max_count:4
+Login5Request.login_context type:FT_POINTER
+Login5Response.login_context type:FT_POINTER
+Login5Ok.username type:FT_POINTER
+Login5Ok.access_token type:FT_POINTER
+Login5Ok.stored_credential type:FT_POINTER

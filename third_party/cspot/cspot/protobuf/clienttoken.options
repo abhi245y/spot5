@@ -1,0 +1,14 @@
+NativeDesktopLinuxData.system_name max_size:32
+NativeDesktopLinuxData.system_release max_size:64
+NativeDesktopLinuxData.system_version max_size:128
+NativeDesktopLinuxData.hardware max_size:32
+ConnectivitySdkData.device_id max_size:64
+ClientDataRequest.client_version max_size:32
+ClientDataRequest.client_id max_size:64
+HashCashAnswer.suffix max_size:33
+ChallengeAnswersRequest.state type:FT_POINTER
+ChallengeAnswersRequest.answers max_count:1
+GrantedTokenResponse.token type:FT_POINTER
+HashCashParameters.prefix type:FT_POINTER
+ChallengesResponse.state type:FT_POINTER
+ChallengesResponse.challenges max_count:4

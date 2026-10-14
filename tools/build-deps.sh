@@ -11,7 +11,7 @@ set -euo pipefail
 
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 sdk_root="$root/.deps/native/ps5-payload-sdk"
-bell="$root/../cspot/cspot/bell"
+bell="$root/third_party/cspot/cspot/bell"
 out="$root/build/deps"
 
 mbedtls_version=3.6.4
@@ -28,28 +28,10 @@ webp_tar="$root/.deps/src/libwebp-$webp_version.tar.gz"
 webp="$root/.deps/src/libwebp-$webp_version"
 
 mkdir -p "$root/.deps/src" "$out"
+bash "$root/tools/setup-native-dependencies.sh" >/dev/null # the PS5 SDK the compiler wrapper uses
 
-# The app builds from whatever branch ../cspot has checked out. Refuse a
-# checkout that lacks the fixes the console needs (a branch cut from master
-# would silently drop them), and say what is being built.
-grep -q "login5.spotify.com" "$root/../cspot/cspot/src/AccessKeyFetcher.cpp" || {
-    echo "cspot checkout lacks login5 (feat/login5-token); check out the ps5/feature branch" >&2
-    exit 2
-}
-grep -q "appendToContext" "$root/../cspot/cspot/src/SpircHandler.cpp" || {
-    echo "cspot checkout lacks local playback (feat/local-load)" >&2
-    exit 2
-}
-grep -q "statusCode" "$root/../cspot/cspot/bell/main/io/include/HTTPClient.h" || {
-    echo "bell checkout lacks HTTPClient::statusCode (bell ps5 branch)" >&2
-    exit 2
-}
-grep -q "hasAccept" "$root/../cspot/cspot/bell/main/io/HTTPClient.cpp" || {
-    echo "bell checkout lacks the Accept header fix (fix/accept-header)" >&2
-    exit 2
-}
-echo "cspot: $(git -C "$root/../cspot" rev-parse --abbrev-ref HEAD)@$(git -C "$root/../cspot" rev-parse --short HEAD)" \
-    "bell: $(git -C "$root/../cspot/cspot/bell" rev-parse --short HEAD)"
+# cspot and bell are vendored in third_party/cspot (VERSION says which commits).
+echo "cspot/bell: $(grep -E '^(cspot|bell)' "$root/third_party/cspot/VERSION" | awk '{print $1"@"$2}' | tr '\n' ' ')"
 if [[ ! -f $mbedtls_tar ]]; then
     curl -sSL -o "$mbedtls_tar" \
         "https://github.com/Mbed-TLS/mbedtls/releases/download/mbedtls-$mbedtls_version/mbedtls-$mbedtls_version.tar.bz2"
@@ -67,8 +49,10 @@ export root sdk_root
 mbedtls_flags=(-std=c11 -O2 -w -ffunction-sections -fdata-sections
     -D__unix__ "-DMBEDTLS_USER_CONFIG_FILE=\"$root/src/platform/mbedtls_ps5_config.h\""
     -I"$mbedtls/include")
-cspot="$root/../cspot/cspot"
-gen="$out/proto"
+cspot="$root/third_party/cspot/cspot"
+# nanopb sources for cspot's .proto files, generated once and kept with the vendored
+# cspot (nanopb 0.4.6's generator needs protobuf 4 on Python <= 3.12).
+gen="$root/third_party/cspot/generated"
 common_defs=(-DBELL_TASK_MIN_STACK=1048576 -DCSPOT_CDN_CHUNK_SIZE=262144 -DBELL_DISABLE_FMT -DBELL_DISABLE_REGEX -DPB_ENABLE_MALLOC -DPB_FIELD_32BIT
     "-DMBEDTLS_USER_CONFIG_FILE=\"$root/src/platform/mbedtls_ps5_config.h\"")
 includes=(-I"$mbedtls/include" -I"$bell/main/io/include" -I"$bell/main/utilities/include"
@@ -114,11 +98,6 @@ rm -f "$out/libmbedtls.a" && llvm-ar rcs "$out/libmbedtls.a" "$out"/mbedtls/*.o
 webp_flags=(-std=c11 -O2 -w -ffunction-sections -fdata-sections -I"$webp")
 compile "$out/webp" webp_flags "$webp"/src/dec/*.c "$webp"/src/dsp/*.c "$webp"/src/utils/*.c
 rm -f "$out/libwebpdec.a" && llvm-ar rcs "$out/libwebpdec.a" "$out"/webp/*.o
-
-# nanopb C files from cspot's .proto files (same generator as the PC build).
-rm -rf "$gen" && mkdir -p "$gen/protobuf"
-(cd "$cspot" && "$root/../cspot/.venv312/bin/python" "$bell/external/nanopb/generator/nanopb_generator.py" \
-    -q -D "$gen" protobuf/*.proto)
 
 bell_sources=(
     "$bell/main/io/TLSSocket.cpp"

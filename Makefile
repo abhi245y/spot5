@@ -16,19 +16,20 @@ PS5_FTP_USER ?= anonymous
 PS5_FTP_PASSWORD ?= anonymous
 DEPLOY_DRY_RUN ?= 0
 
-CSPOT := ../cspot/cspot
+CSPOT := third_party/cspot/cspot
 BELL := $(CSPOT)/bell
 OPENGL_SDK := .deps/ps5-opengl/current
 
 # Defines that change class layouts must match tools/build-deps.sh exactly.
-CSPOT_REV := $(shell git -C ../cspot rev-parse --abbrev-ref HEAD | tr "/-" "__")_$(shell git -C ../cspot rev-parse --short HEAD)
+# cspot is vendored (third_party/cspot/VERSION says which commit); About shows it.
+CSPOT_REV := ps5_$(shell awk '/^cspot/{print $$2}' third_party/cspot/VERSION)
 APP_DEFINITIONS := CSPOT_REV=$(CSPOT_REV) GL_GLEXT_PROTOTYPES=1 BELL_TASK_MIN_STACK=1048576 \
 	CSPOT_CDN_CHUNK_SIZE=262144 BELL_DISABLE_FMT BELL_DISABLE_REGEX \
 	PB_ENABLE_MALLOC PB_FIELD_32BIT
 APP_INCLUDE_PATHS := src $(OPENGL_SDK)/include \
 	$(BELL)/main/io/include $(BELL)/main/utilities/include $(BELL)/main/platform \
 	$(BELL)/external/nanopb $(BELL)/external/nlohmann_json/include $(BELL)/external/tremor \
-	$(BELL)/external/civetweb/include $(CSPOT)/include build/deps/proto .deps/src/mbedtls-3.6.4/include \
+	$(BELL)/external/civetweb/include $(CSPOT)/include third_party/cspot/generated .deps/src/mbedtls-3.6.4/include \
 	.deps/src/libwebp-1.4.0/src
 APP_STATIC_ARCHIVES := build/deps/libbell.a build/deps/libmbedtls.a build/deps/libwebpdec.a \
 	.deps/ps5-opengl/libps5opengl-group.a

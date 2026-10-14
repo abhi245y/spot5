@@ -1,0 +1,6 @@
+Vendored for Spot5 (source only; build output and git history left out).
+
+cspot  f8d0fb5  local branch ps5 (Spot5 changes) on https://github.com/philippe44/cspot, itself a fork of https://github.com/feelfreelinux/cspot
+bell   1c928ec  local branch ps5 (Spot5 changes) on https://github.com/philippe44/bell
+  external/mdnssvc        44e78c1
+  external/nlohmann_json  07182ebc1
