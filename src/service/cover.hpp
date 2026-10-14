@@ -20,11 +20,13 @@
 #include <cstdint>
 #include <deque>
 #include <map>
+#include <memory>
 #include <mutex>
 #include <optional>
 #include <string>
 #include <vector>
 
+#include "HTTPClient.h"
 #include "screens/style.hpp"
 
 namespace service
@@ -69,7 +71,13 @@ class CoverLoader
   private:
     static void *entry(void *self);
     void run();
-    std::vector<std::uint8_t> fetch(const std::string &url);
+    // A worker's kept-alive connection, reused for every cover from one host.
+    struct Connection
+    {
+        std::unique_ptr<bell::HTTPClient::Response> response;
+        std::string host;
+    };
+    std::vector<std::uint8_t> fetch(const std::string &url, Connection &connection);
     void save(const std::string &url, const std::vector<std::uint8_t> &bytes);
     void finished(const std::string &url);
 

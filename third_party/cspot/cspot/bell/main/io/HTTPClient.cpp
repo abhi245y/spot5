@@ -31,6 +31,12 @@ void HTTPClient::Response::rawRequest(const std::string& url,
                                       const std::vector<uint8_t>& content,
                                       Headers& headers) {
   urlParser = bell::URLParser::parse(url);
+  // A Response reused for another request on its keep-alive connection must
+  // not hand back the previous body or length
+  rawBody.clear();
+  contentSize = 0;
+  hasContentSize = false;
+  status = 0;
 
   // Prepare a request
   const char* reqEnd = "\r\n";

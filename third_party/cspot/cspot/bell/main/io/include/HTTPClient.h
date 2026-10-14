@@ -69,6 +69,9 @@ class HTTPClient {
     bell::SocketStream& stream() { return this->socketStream; }
 
     size_t contentLength();
+    // False when the reply had no Content-Length (its body length unknown, so
+    // the connection cannot carry another request)
+    bool hasContentLength() const { return hasContentSize; }
     size_t totalLength();
 
    private:

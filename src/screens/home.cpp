@@ -162,6 +162,7 @@ class Home final : public Screen
         {
             draw_hero(list); // a wide banner sits under the top bar
             draw_shelves(list);
+            prefetch();
         }
         draw_top_bar(list, model);
         // A soft scrim under the bottom row: the shelf peeking in below stays
@@ -532,6 +533,31 @@ class Home final : public Screen
         const float width = r.w - r.h - 36.0f;
         ui::text(list, fonts.semibold, fonts.semibold.font->fit(card.title, 23, width), r.x + r.h + 20,
                  r.cy() + 8, 23, kWhite.with_alpha(alpha));
+    }
+
+    // Covers about to come into view start loading before they get there:
+    // the next two shelves, a screen further along the focused one, and the
+    // banners of the cards beside the focus (the biggest downloads).
+    void prefetch() const
+    {
+        const int last = std::min(row_ + 2, static_cast<int>(shelves().size()) - 1);
+        for (int r = std::max(row_, 0); r <= last; ++r)
+        {
+            const Shelf &shelf = shelves()[static_cast<std::size_t>(r)];
+            for (int c = 0; c < static_cast<int>(shelf.cards.size()); ++c)
+                if (item_rect(r, c).x < 2.0f * gfx::kVirtualWidth)
+                    art(shelf.cards[static_cast<std::size_t>(c)].image);
+        }
+        if (is_grid(row_) || row_ < 0 || row_ >= static_cast<int>(shelves().size()))
+            return;
+        const Shelf &shelf = shelves()[static_cast<std::size_t>(row_)];
+        const int index = rows_[static_cast<std::size_t>(row_)].index;
+        for (int c : {index - 1, index + 1})
+            if (c >= 0 && c < static_cast<int>(shelf.cards.size()))
+            {
+                const Card &card = shelf.cards[static_cast<std::size_t>(c)];
+                art(!card.wide.empty() ? card.wide : card.image_large);
+            }
     }
 
     void draw_shelves(gfx::DrawList &list) const

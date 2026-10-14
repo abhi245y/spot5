@@ -471,15 +471,28 @@ void App::run()
                 return url.empty() ? screens::Art{} : card_art.get(url);
             });
         card_art.pump();
-        // Launch: every Home cover, before the loader hands over.
+        // Launch: the loader hands over once the first screen's covers are in
+        // (the first two shelves and the first item's banner); every other
+        // Home cover is asked for too and keeps loading behind Home.
         if (model.step == screens::Step::artwork && model.home)
         {
-            std::vector<std::string> urls;
-            for (const screens::Shelf &shelf : model.home->shelves)
-                for (const screens::Card &card : shelf.cards)
+            constexpr std::size_t kFirstScreenShelves = 2;
+            std::vector<std::string> first, rest;
+            const std::vector<screens::Shelf> &shelves = model.home->shelves;
+            for (std::size_t i = 0; i < shelves.size(); ++i)
+                for (const screens::Card &card : shelves[i].cards)
                     if (!card.image.empty())
-                        urls.push_back(card.image);
-            controller.report_artwork(static_cast<int>(card_art.preload(urls)), static_cast<int>(urls.size()));
+                        (i < kFirstScreenShelves ? first : rest).push_back(card.image);
+            if (!shelves.empty() && !shelves.front().cards.empty())
+            {
+                const screens::Card &hero = shelves.front().cards.front();
+                const std::string &banner = !hero.wide.empty() ? hero.wide : hero.image_large;
+                if (!banner.empty())
+                    first.push_back(banner);
+            }
+            const std::size_t ready = card_art.preload(first);
+            card_art.preload(rest);
+            controller.report_artwork(static_cast<int>(ready), static_cast<int>(first.size()));
         }
         ui::Feedback feedback;
         std::vector<screens::Command> commands;
