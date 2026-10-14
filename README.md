@@ -116,7 +116,7 @@ Spot5 needs no configuration file. To override the Spotify client ID it uses, pl
 
 - Music stops when you start a game: the console suspends media apps while a game runs.
 - Spotify DJ can't be played from the console yet.
-- Song and artist names with accented letters may show `?` in place of those letters.
+- Names in scripts other than Latin, Greek, Cyrillic and Malayalam (for example Hindi, Tamil, Japanese or Arabic) show `?` in place of those letters for now.
 
 ## Roadmap
 
@@ -128,7 +128,7 @@ A standalone app in native 4K: Home, Your Library, playlist, album and artist pa
 ### v1.1 — Polish and speed
 - [ ] Button hints drawn in Spot5's own style on every screen
 - [ ] Faster artwork: smarter cover fetching, caching and decoding
-- [ ] Accented and non-Latin letters in titles and names
+- [ ] Accented, Greek, Cyrillic and Malayalam letters in titles and names, with Malayalam's joined letters drawn correctly
 
 ### v1.2 — The song menu
 - [ ] An options menu for any song — from playlists, albums, artist pages, the queue and Now Playing
@@ -161,7 +161,7 @@ A standalone app in native 4K: Home, Your Library, playlist, album and artist pa
 
 Spot5 builds on Linux (or WSL) and fetches its PS5 toolchain itself.
 
-**Prerequisites:** Clang (18 or newer; set `PS5_CLANG` to choose one), `llvm-ar`, `ninja`, `make`, `python3`, `curl`, `wget`, `unzip`, `tar` and `sha256sum`.
+**Prerequisites:** Clang (18 or newer; set `PS5_CLANG` to choose one), `llvm-ar`, `ninja`, `make`, `python3`, `curl`, `wget`, `unzip`, `tar`, `xz` and `sha256sum`.
 
 ```sh
 git clone <this repository> spot5
