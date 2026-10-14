@@ -264,10 +264,23 @@ bool parse_artist(const std::string &reply, screens::ArtistPage &page)
             row.uri = str(track, "uri");
             row.title = drawable(str(track, "name"));
             row.artists = names(field(track, "artists"));
+            const json &artists = field(track, "artists");
+            if (artists.is_object() && artists.contains("items"))
+                for (const json &artist : artists["items"])
+                {
+                    screens::Card card;
+                    card.uri = str(artist, "uri");
+                    card.title = artist.contains("profile") ? drawable(str(artist["profile"], "name")) : "";
+                    card.subtitle = "Artist";
+                    card.round = true;
+                    if (!card.uri.empty() && !card.title.empty())
+                        row.artist_cards.push_back(std::move(card));
+                }
             if (track.contains("duration"))
                 row.duration_ms = num(track["duration"], "totalMilliseconds");
             if (track.contains("albumOfTrack"))
             {
+                row.album_uri = str(track["albumOfTrack"], "uri");
                 // Sources without widths: the 300 px one by its id prefix.
                 for (const json &source : track["albumOfTrack"]["coverArt"]["sources"])
                 {

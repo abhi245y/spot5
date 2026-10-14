@@ -179,7 +179,7 @@ class NowPlaying final : public Screen
         }
         position_ = seek_target_ >= 0.0f ? seek_target_ : session;
 
-        update_shortcuts(input, feedback);
+        update_shortcuts(model, input, feedback);
         switch (zone_)
         {
         case Zone::scrubber:
@@ -403,8 +403,39 @@ class NowPlaying final : public Screen
     }
 
     // Buttons that work from every zone.
-    void update_shortcuts(const InputFrame &input, ui::Feedback &feedback)
+    void update_shortcuts(const Model &model, const InputFrame &input, ui::Feedback &feedback)
     {
+        // Options: the song menu, on the focused queue row or the playing song.
+        if (input.is_pressed(Action::menu))
+        {
+            const int rows = queue_ptr_ ? static_cast<int>(queue_ptr_->tracks.size()) : 0;
+            const int playing = playing_row();
+            if (zone_ == Zone::queue && queue_row_index_ < rows)
+            {
+                const Rect row{kQueueX + 14,
+                               kQueueY + kQueueListTop - queue_scroll_.offset() +
+                                   static_cast<float>(queue_row_index_) * kQueueRow + 3,
+                               kQueueW - 28, kQueueRow - 6};
+                context_.song_pick = Context::SongPick{queue_ptr_->tracks[static_cast<std::size_t>(queue_row_index_)], row};
+            }
+            else if (model.has_track)
+            {
+                // The queue's row has the album and artist links; the track alone has none.
+                TrackRow song;
+                if (playing >= 0 && playing < rows)
+                    song = queue_ptr_->tracks[static_cast<std::size_t>(playing)];
+                else
+                {
+                    song.title = model.track.title;
+                    song.artists = model.track.artist;
+                    song.album = model.track.album;
+                    song.duration_ms = model.track.duration_ms;
+                    song.image = model.track.image_url;
+                }
+                const Layout l = layout();
+                context_.song_pick = Context::SongPick{song, {l.column_x - 20, 230, l.column_w + 40, 140}};
+            }
+        }
         if (input.is_pressed(Action::west) && queue_ptr_)
         {
             queue_open_ = !queue_open_;
@@ -1038,13 +1069,15 @@ class NowPlaying final : public Screen
 
     void draw_hints(gfx::DrawList &list) const
     {
+        if (context_.song_menu_open)
+            return;
         const ui::Fonts &fonts = context_.fonts;
         const ui::GlyphStyle glyphs = style::hint_style();
         constexpr const char *kLabels[kControls] = {"Previous", "Play", "Next"};
         const char *play = playing_ ? "Pause" : "Play";
         const char *queue = queue_open_ ? "Hide queue" : "Show queue";
         list.push_opacity(appear(8));
-        ui::Hint hints[5];
+        ui::Hint hints[6];
         int count = 0;
         switch (zone_)
         {
@@ -1063,6 +1096,7 @@ class NowPlaying final : public Screen
             hints[count++] = {ui::Button::circle, "Back"};
             break;
         }
+        hints[count++] = {ui::Button::options, "More"};
         if (queue_ptr_)
             hints[count++] = {ui::Button::square, queue};
         ui::draw_hints(list, fonts, glyphs, hints, count, 1824, true, style::hint_layout());

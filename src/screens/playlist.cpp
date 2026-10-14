@@ -136,6 +136,9 @@ class Playlist final : public Screen
             }
         }
 
+        if (zone_ == Zone::list && row_ < rows && input.is_pressed(Action::menu))
+            context_.song_pick = Context::SongPick{page->tracks[static_cast<std::size_t>(row_)], focus_rect(*page)};
+
         // Ask for the details of rows on screen (and a few below) once.
         const int first = std::max(0, static_cast<int>(scroll_.target) - 2);
         const int last = std::min(rows, first + visible_rows() + kDescribeAhead);
@@ -494,14 +497,19 @@ class Playlist final : public Screen
     void draw_hints(gfx::DrawList &list, const Model &model, const PlaylistPage &page) const
     {
         style::hint_fade(list); // content scrolled down there fades out before the hints
+        if (context_.song_menu_open)
+            return;
         list.push_opacity(tween::stagger(age_, 5, 0.08f, 0.5f));
         const char *play = zone_ == Zone::list ? "Play from here" : action_ == 1 ? "Shuffle" : "Play";
-        ui::Hint hints[5];
+        ui::Hint hints[6];
         int count = 0;
         if (!page.tracks.empty() || zone_ == Zone::actions)
             hints[count++] = {ui::Button::cross, play};
         if (zone_ == Zone::list)
+        {
             hints[count++] = {ui::Button::l1, "Page", ui::Button::r1};
+            hints[count++] = {ui::Button::options, "More"};
+        }
         hints[count++] = {ui::Button::circle, "Back"};
         if (model.has_track)
             hints[count++] = {ui::Button::triangle, "Now Playing"};

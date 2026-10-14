@@ -41,7 +41,8 @@ constexpr float kSlide = 90.0f;        // how far a screen slides on a switch
 Shell::Shell(Context &context)
     : context_(context), launch_(make_launch(context)), home_(make_home(context)),
       playing_(make_now_playing(context)), menu_(make_control_room(context)),
-      page_(make_playlist(context)), library_(make_library(context)), artist_(make_artist(context))
+      page_(make_playlist(context)), library_(make_library(context)), artist_(make_artist(context)),
+      song_menu_(context)
 {
 }
 
@@ -94,6 +95,8 @@ void Shell::go(Id next, Move move, float seconds)
              kNames[static_cast<int>(next)], kMoves[static_cast<int>(move)]);
     if (context_.settings.reduced_motion)
         seconds = std::min(seconds, 0.4f);
+    if (next != Id::page && next != Id::artist)
+        song_menu_.dismiss(); // a page it opened is the only move it survives
     previous_ = current_;
     current_ = next;
     move_ = move;
@@ -111,7 +114,13 @@ void Shell::update(const Model &model, const InputFrame &input, float dt, ui::Fe
     // Playing keeps Circle while its queue has the focus).
     const bool browsing = current_ == Id::home || current_ == Id::library || current_ == Id::page ||
                           current_ == Id::artist;
-    if (!menu_open_ && browsing && model.has_track && input.is_pressed(Action::north))
+    // The song menu takes every button while it is open.
+    const bool picking = song_menu_.is_open();
+    if (picking)
+    {
+        // Nothing here: the song menu answers the buttons below.
+    }
+    else if (!menu_open_ && browsing && model.has_track && input.is_pressed(Action::north))
     {
         playing_open_ = true;
         feedback.play(audio::Cue::open);
@@ -192,7 +201,7 @@ void Shell::update(const Model &model, const InputFrame &input, float dt, ui::Fe
     quit_shown_.target = touch_held_ >= kTapSeconds || quit_progress_ > 0.0f || quit_sent_ ? 1.0f : 0.0f;
     quit_shown_.update(dt, context_.settings.reduced_motion ? 40.0f : 12.0f);
 
-    if (tapped && !menu_open_)
+    if (tapped && !menu_open_ && !picking)
     {
         menu_open_ = true;
         feedback.play(audio::Cue::modal_open);
@@ -205,14 +214,24 @@ void Shell::update(const Model &model, const InputFrame &input, float dt, ui::Fe
     }
     else
     {
-        screen(current_).update(model, input, dt, feedback, commands);
-        // Cross on a card asked for its page: an artist's or a list's.
+        song_menu_.update(picking ? input : InputFrame{}, dt, feedback);
+        context_.song_menu_open = song_menu_.is_open();
+        screen(current_).update(model, picking ? InputFrame{} : input, dt, feedback, commands);
+        if (context_.song_pick)
+        {
+            if (!picking)
+                song_menu_.open(context_.song_pick->song, context_.song_pick->anchor, feedback);
+            context_.song_pick.reset();
+        }
+        // Cross on a card (or the song menu) asked for a page: an artist's
+        // or a list's. From Now Playing, the page comes up in its place.
         for (const Request &request : context_.requests)
             if (request.kind == Request::Kind::open)
             {
                 const Id next = request.card.uri.rfind("spotify:artist:", 0) == 0 ? Id::artist : Id::page;
                 if (stack_.empty() || stack_.back() != next)
                     stack_.push_back(next);
+                playing_open_ = false;
             }
         if (current_ == Id::menu && control_room_wants_close(*menu_))
         {
@@ -377,6 +396,7 @@ void Shell::compose(gfx::Renderer &renderer, const Model &model)
 
     chrome_.clear();
     draw_overlays(chrome_, model);
+    song_menu_.draw(chrome_);
     renderer.draw(chrome_);
 }
 

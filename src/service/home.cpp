@@ -182,11 +182,36 @@ bool parse_traits(std::string_view reply, Entities &entities, std::int64_t now_m
     return kinds.ok();
 }
 
+namespace
+{
+
+// A 16-byte Spotify id as the 22 base62 characters of its URI.
+std::string base62(std::string_view gid)
+{
+    static const char kDigits[] = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    std::vector<unsigned char> number(gid.begin(), gid.end());
+    std::string out(22, '0');
+    for (int at = 21; at >= 0; --at)
+    {
+        unsigned remainder = 0; // long division of the big-endian number by 62
+        for (unsigned char &byte : number)
+        {
+            const unsigned value = (remainder << 8) | byte;
+            byte = static_cast<unsigned char>(value / 62);
+            remainder = value % 62;
+        }
+        out[static_cast<std::size_t>(at)] = kDigits[remainder];
+    }
+    return out;
+}
+
+} // namespace
+
 bool parse_tracks(std::string_view reply, std::map<std::string, screens::TrackRow> &tracks)
 {
     // Same envelope as the traits; the value is spotify.metadata.Track:
-    // 2 name, 3 album {2 name, 17 cover group {1 image {1 file id, 2 size}}},
-    // 4 artist {2 name} (repeated), 7 duration ms.
+    // 2 name, 3 album {1 gid, 2 name, 17 cover group {1 image {1 file id, 2 size}}},
+    // 4 artist {1 gid, 2 name} (repeated), 7 duration ms.
     pb::Reader kinds(reply);
     pb::Field kind;
     while (kinds.next(kind))
@@ -208,13 +233,26 @@ bool parse_tracks(std::string_view reply, std::map<std::string, screens::TrackRo
             row.title = drawable(std::string(pb::first(track, 2)));
             const std::string_view album = pb::first(track, 3);
             row.album = drawable(std::string(pb::first(album, 2)));
+            if (const std::string_view gid = pb::first(album, 1); gid.size() == 16)
+                row.album_uri = "spotify:album:" + base62(gid);
             pb::Reader fields(track);
             pb::Field f;
             std::vector<std::string> artists;
             while (fields.next(f))
             {
                 if (f.number == 4 && f.wire == 2)
+                {
                     artists.push_back(drawable(std::string(pb::first(f.bytes, 2))));
+                    if (const std::string_view gid = pb::first(f.bytes, 1); gid.size() == 16)
+                    {
+                        screens::Card artist;
+                        artist.uri = "spotify:artist:" + base62(gid);
+                        artist.title = artists.back();
+                        artist.subtitle = "Artist";
+                        artist.round = true;
+                        row.artist_cards.push_back(std::move(artist));
+                    }
+                }
                 else if (f.number == 7 && f.wire == 0)
                     row.duration_ms = static_cast<std::uint32_t>(f.varint);
             }

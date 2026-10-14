@@ -87,6 +87,10 @@ class ArtistScreen final : public Screen
         navigate(*page, input, feedback);
         if (input.is_pressed(Action::confirm))
             activate(*page, feedback);
+        if (zone_ == Zone::popular && index_[1] < static_cast<int>(page->top.size()) &&
+            input.is_pressed(Action::menu))
+            context_.song_pick =
+                Context::SongPick{page->top[static_cast<std::size_t>(index_[1])], focus_rect(*page)};
 
         // ---- animation ----
         scroll_.target = std::max(0.0f, zone_top(zone_) - 380.0f);
@@ -478,6 +482,8 @@ class ArtistScreen final : public Screen
     void draw_hints(gfx::DrawList &list, const Model &model, const ArtistPage &) const
     {
         style::hint_fade(list); // content scrolled down there fades out before the hints
+        if (context_.song_menu_open)
+            return;
         list.push_opacity(tween::stagger(age_, 5, 0.08f, 0.5f));
         const char *cross = zone_ == Zone::actions   ? (index_[0] == 1 ? "Shuffle" : "Play")
                             : zone_ == Zone::popular ? "Play from here"
@@ -485,6 +491,8 @@ class ArtistScreen final : public Screen
         ui::Hint hints[4];
         int count = 0;
         hints[count++] = {ui::Button::cross, cross};
+        if (zone_ == Zone::popular)
+            hints[count++] = {ui::Button::options, "More"};
         hints[count++] = {ui::Button::circle, "Back"};
         if (model.has_track)
             hints[count++] = {ui::Button::triangle, "Now Playing"};

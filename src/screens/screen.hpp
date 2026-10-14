@@ -68,6 +68,15 @@ struct Context
     std::uint32_t logo[4] = {};
     // The console's offset from UTC now, in minutes (Automatic time zone).
     int console_utc_minutes = 0;
+    // Options on a song: the screen leaves the song and its row here, and the
+    // shell opens the song menu on it.
+    struct SongPick
+    {
+        TrackRow song;
+        gfx::Rect anchor;
+    };
+    std::optional<SongPick> song_pick;
+    bool song_menu_open = false; // set by the shell: screens leave their hints to the menu
 };
 
 // The Spot5 mark filling the square r.

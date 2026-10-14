@@ -587,7 +587,7 @@ void Controller::handle_request(const screens::Request &request)
             browser.resolve(request.play);
         }
         {
-            const std::string title = title_of(request.play.uri);
+            const std::string title = request.play.radio ? "song radio" : title_of(request.play.uri);
             set_busy((request.play.shuffle ? "Shuffling " : "Starting ") + (title.empty() ? std::string("playback") : title),
                      Until::track_change);
         }

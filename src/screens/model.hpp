@@ -81,6 +81,8 @@ struct TrackRow
     std::string album;
     std::uint32_t duration_ms = 0;
     std::string image; // ~300 px album cover
+    std::string album_uri;           // spotify:album:... (empty if unknown)
+    std::vector<Card> artist_cards;  // each artist, ready to open (uri, name)
 };
 
 // A playlist/album opened from Home: its card and every track (resolved on
@@ -153,6 +155,7 @@ struct PlayRequest
     bool shuffle = false;
     int index = 0;
     std::vector<std::string> tracks; // when set: play these (in `uri`'s name) from `index`
+    bool radio = false;              // uri is a track: play its song radio
 };
 
 // What a screen asks the app for (Context::requests), besides Commands.
@@ -186,6 +189,7 @@ struct Settings
     bool reduced_motion = false;
     int resolution = 2;           // 0: 1080p, 1: 1440p, 2: 4K (the display opens at it on launch)
     std::string timezone;         // IANA name for Home; empty: Automatic (the console's offset)
+    int song_menu = 0;            // the Options menu on a song: 0 side panel, 1 pop-up at the row
 };
 
 // Facts for Control Room's About page.
