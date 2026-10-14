@@ -27,6 +27,8 @@ constexpr std::int64_t kRetryGapMs = 10 * 60 * 1000;
 // Launch waits for Home's covers at most this long (a dead link must not
 // keep the app on the loader).
 constexpr std::int64_t kArtworkWaitMs = 45000;
+// After a pairing login, how long the phone's first "play" is held back.
+constexpr std::int64_t kPairingHoldMs = 15000;
 // Add the next window of a long context when this many tracks are left.
 constexpr std::size_t kQueueLowWater = 10;
 
@@ -326,6 +328,13 @@ void Controller::step_pairing()
     }
     set_state(State::Connecting);
     start_session(std::move(login));
+    if (session_)
+    {
+        // Picking this console on the phone also moves the phone's music
+        // here, playing: let it arrive paused (Play continues it).
+        session_->hold_play(true);
+        hold_play_until_ms_ = now_ms() + kPairingHoldMs;
+    }
     // ponytail: the phone may check /spotify_info while we log in, so the
     // advertisement stays up until the login is done.
     pairing_.reset();
@@ -377,6 +386,20 @@ void Controller::start_session(std::shared_ptr<cspot::LoginBlob> login)
 void Controller::step_ready()
 {
     session_->pump(); // waits up to 200 ms for a packet
+    if (hold_play_until_ms_ != 0)
+    {
+        const bool held = session_->take_held_play();
+        if (held)
+        {
+            session_->set_paused(true); // so the phone shows it paused here too
+            hui::sys::log("[APP] music moved here at pairing: paused");
+        }
+        if (held || now_ms() > hold_play_until_ms_) // only that first play; later ones are wanted
+        {
+            session_->hold_play(false);
+            hold_play_until_ms_ = 0;
+        }
+    }
     publish_now_playing();
     step_browser();
     if (!session_->connected())

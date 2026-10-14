@@ -55,6 +55,13 @@ class Player
     // top) on top of the phone's volume, or alone when follow_phone is off.
     void set_volume(int level, bool follow_phone);
 
+    // While held, a "play" from Spotify keeps the output paused and is
+    // remembered instead: right after a pairing login the phone moves its
+    // music here playing, and it should arrive paused.
+    void hold_play(bool hold);
+    // True once if a play was held back since the last call.
+    bool take_held_play();
+
   private:
     struct Chunk
     {
@@ -79,6 +86,7 @@ class Player
     Resampler resampler_{44100, 48000};
     std::string stream_track_, play_track_;
     bool paused_ = true, playlist_end_ = false;
+    bool hold_play_ = false, held_play_ = false;
     std::atomic<int> volume_{65535}; // spirc volume, 0..65535
     std::atomic<float> local_gain_{1.0f};
     std::atomic<bool> follow_phone_{true};

@@ -4,6 +4,7 @@
 #include "audio/player.hpp"
 
 #include <algorithm>
+#include <utility>
 #include <variant>
 
 #include "Logger.h"
@@ -45,6 +46,11 @@ Player::Player(std::shared_ptr<cspot::SpircHandler> handler) : handler_(std::mov
         {
         case Type::PLAY_PAUSE:
             paused_ = std::get<bool>(event->data);
+            if (!paused_ && hold_play_)
+            {
+                paused_ = true; // stays silent; the controller tells Spotify it is paused
+                held_play_ = true;
+            }
             now_playing_.paused = paused_;
             break;
         case Type::FLUSH:
@@ -115,6 +121,20 @@ void Player::set_volume(int level, bool follow_phone)
     const float step = static_cast<float>(std::clamp(level, 0, 10)) / 10.0f;
     local_gain_ = step * step; // 40 log10(step) dB, as Control Room's meter shows
     follow_phone_ = follow_phone;
+}
+
+void Player::hold_play(bool hold)
+{
+    std::scoped_lock guard(lock_);
+    hold_play_ = hold;
+    if (!hold)
+        held_play_ = false;
+}
+
+bool Player::take_held_play()
+{
+    std::scoped_lock guard(lock_);
+    return std::exchange(held_play_, false);
 }
 
 NowPlaying Player::now_playing()

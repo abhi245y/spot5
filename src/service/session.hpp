@@ -86,6 +86,9 @@ class Session
 
     // Playback commands, as if pressed on the phone.
     void set_paused(bool paused);
+    // See Player::hold_play / take_held_play.
+    void hold_play(bool hold);
+    bool take_held_play();
     void next();
     void previous();
 
