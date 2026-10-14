@@ -30,8 +30,8 @@ APP_INCLUDE_PATHS := src $(OPENGL_SDK)/include \
 	$(BELL)/main/io/include $(BELL)/main/utilities/include $(BELL)/main/platform \
 	$(BELL)/external/nanopb $(BELL)/external/nlohmann_json/include $(BELL)/external/tremor \
 	$(BELL)/external/civetweb/include $(CSPOT)/include third_party/cspot/generated .deps/src/mbedtls-3.6.4/include \
-	.deps/src/libwebp-1.4.0/src
-APP_STATIC_ARCHIVES := build/deps/libbell.a build/deps/libmbedtls.a build/deps/libwebpdec.a \
+	.deps/src/libwebp-1.4.0/src .deps/src/harfbuzz-11.2.1/src
+APP_STATIC_ARCHIVES := build/deps/libbell.a build/deps/libmbedtls.a build/deps/libwebpdec.a build/deps/libharfbuzz.a \
 	.deps/ps5-opengl/libps5opengl-group.a
 APP_IMPORT_STUBS := $(OPENGL_SDK)/lib/libSceAgc.so $(OPENGL_SDK)/lib/libSceAgcDriver.so
 

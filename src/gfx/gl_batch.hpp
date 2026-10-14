@@ -34,6 +34,11 @@ class GlBatch
     // slot taken it returns a plain texture name, which also works but starts
     // a new draw call wherever that font is used.
     std::uint32_t create_font_texture(const Font &font);
+    // The same for an atlas filled at runtime (width x height R8 pixels).
+    std::uint32_t create_font_texture(int width, int height, const std::uint8_t *r8);
+    // Replaces rows [y, y + rows) of a font atlas made above; r8 points at row y.
+    void update_font_texture(std::uint32_t handle, int y, int rows, int width,
+                             const std::uint8_t *r8);
     // Uploads RGBA8 pixels as a single-level texture; returns its name.
     std::uint32_t create_texture(int width, int height, const std::uint8_t *rgba);
 

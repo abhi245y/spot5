@@ -32,8 +32,9 @@ The default Spotify client ID is librespot's public keymaster ID
 | Component | Version | Licence |
 | --- | --- | --- |
 | Mbed TLS | 3.6.4, SHA-256 `ec35b18a…678110` | Apache-2.0 |
+| HarfBuzz (text shaping) | 11.2.1, SHA-256 `093714c8…336a49` | MIT ("Old MIT"; its USE tables MIT, Microsoft); texts ship in `assets/licenses/` |
 | libwebp (decoder only) | 1.4.0, SHA-256 `61f873ec…ab1e5` | BSD-3-Clause plus patent grant; texts ship in `assets/licenses/` |
-| stb_image, stb_vorbis | see `src/third_party/stb/UPSTREAM` | public domain or MIT (`src/third_party/stb/LICENSE`) |
+| stb_image, stb_truetype, stb_vorbis | see `src/third_party/stb/UPSTREAM` | public domain or MIT (`src/third_party/stb/LICENSE`) |
 
 The archives are fetched into the ignored `.deps/` folder and checked against
 the pinned SHA-256 before use; they are not stored in this repository.
@@ -81,9 +82,11 @@ included.
 | Montserrat Medium | (c) 2011 The Montserrat Project Authors | SIL Open Font License 1.1 (`assets/fonts/Montserrat-LICENSE.txt`) |
 | DejaVu Sans Mono | (c) 2003 Bitstream, Inc.; DejaVu changes are public domain | Bitstream Vera licence (`assets/fonts/DejaVu-LICENSE.txt`) |
 | Press Start 2P | (c) 2012 The Press Start 2P Project Authors | SIL Open Font License 1.1 (`assets/fonts/PressStart2P-LICENSE.txt`) |
+| Noto Sans Malayalam | (c) 2022 The Noto Project Authors | SIL Open Font License 1.1 (`assets/fonts/Noto-LICENSE.txt`) |
 | Patrick Hand | (c) 2010-2012 Patrick Wagesreiter | SIL Open Font License 1.1 (`assets/fonts/PatrickHand-LICENSE.txt`) |
 
-`assets/fonts/*.huifont` are distance-field renderings of these typefaces; the
+`assets/fonts/*.huifont` are distance-field renderings of these typefaces;
+`NotoSansMalayalam-Regular.ttf` ships unchanged and is drawn at runtime. The
 licence texts ship beside them.
 
 ## Certificates and artwork

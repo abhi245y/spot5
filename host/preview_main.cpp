@@ -32,6 +32,7 @@
 #include "gfx/canvas.hpp"
 #include "gfx/gl_program.hpp"
 #include "gfx/renderer.hpp"
+#include "gfx/shaper.hpp"
 #include "screens/shell.hpp"
 #include "third_party/stb/stb_image.h"
 #include "ui/fonts.hpp"
@@ -362,7 +363,7 @@ const std::vector<Beat> &script()
         {1.0f, nullptr, 0, "06a3-artist-albums", Direction::right},
         {0.6f, nullptr, action_bit(Action::back)},
         {0.6f, nullptr, action_bit(Action::page_prev), "06l6-back-home"},
-        {3.5f, [](Model &m) { playing(m, "a", "Aashiqana", "Chaar Diwaari", "Aashiqana", 47000, 214000); },
+        {3.5f, [](Model &m) { playing(m, "a", "Amsham - അംശം", "Aksomaniac", "Amsham", 47000, 214000); },
          0, nullptr},
         {0.8f, nullptr, 0, "06g-home-mini-player"},
         {0.7f, [](Model &m) { m.busy = "Shuffling My playlist #6"; }, 0, "06h-busy-pill"},
@@ -463,6 +464,18 @@ int main(int argc, char **argv)
         !load_font(renderer, assets + "/fonts/montserrat-medium.huifont", display, fonts.display) ||
         !load_font(renderer, assets + "/fonts/dejavu-sans-mono.huifont", mono, fonts.mono))
         return 1;
+    display.add_fallback(&semibold, fonts.semibold.texture); // Montserrat has no Greek
+    gfx::Shaper shaper;
+    {
+        std::string data;
+        if (!save::read_file(assets + "/fonts/NotoSansMalayalam-Regular.ttf", &data) ||
+            !shaper.add_face(std::move(data)))
+            return 1;
+    }
+    shaper.per_frame = 1 << 20; // only captured frames are drawn
+    shaper.attach(renderer.batch());
+    for (gfx::Font *font : {&regular, &semibold, &display, &mono})
+        font->set_shaper(&shaper);
 
     for (int i = 0; i < 2; ++i)
     {
@@ -510,6 +523,17 @@ int main(int argc, char **argv)
     std::remove((g_fixture + "/missing-covers.txt").c_str());
     g_home = load_home_fixture(g_fixture);
     load_rows_fixture(g_fixture);
+    // Letters beyond ASCII: baked accents, Greek and Cyrillic; shaped Malayalam.
+    const char *const samples[][2] = {
+        {"Amsham - അംശം", "Aksomaniac"},
+        {"സ്ത്രീ കേരളം മലയാളം പാട്ട് ഒരു വളരെ നീണ്ട പേര്", "Sushin Shyam"},
+        {"Dancing In The Flames - Live from São Paulo", "Ludwig Göransson, Μάριος Φραγκούλης, Жанна"},
+    };
+    for (std::size_t i = 0; i < std::size(samples) && i < g_rows.size(); ++i)
+    {
+        g_rows[i].title = samples[i][0];
+        g_rows[i].artists = samples[i][1];
+    }
     load_library_fixture(g_fixture);
     std::printf("library fixture: %zu items, artist %s\n", g_library ? g_library->items.size() : 0,
                 g_artist ? g_artist->card.title.c_str() : "none");
@@ -567,6 +591,7 @@ int main(int argc, char **argv)
         glClearColor(0, 0, 0, 1);
         glClear(GL_COLOR_BUFFER_BIT);
         shell.compose(renderer, model);
+        shaper.upload(renderer.batch());
         renderer.present(target.framebuffer(), kWidth, kHeight);
         glBindFramebuffer(GL_FRAMEBUFFER, target.framebuffer());
         glReadPixels(0, 0, kWidth, kHeight, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());

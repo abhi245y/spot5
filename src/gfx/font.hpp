@@ -14,6 +14,8 @@
 namespace hui::gfx
 {
 
+class Shaper;
+
 // One positioned glyph quad in output pixels, with its atlas UV rectangle.
 struct GlyphQuad
 {
@@ -87,6 +89,11 @@ class Font
     {
         fallbacks_.clear();
     }
+    // Shapes and draws what neither this face nor its fallbacks have.
+    void set_shaper(Shaper *shaper)
+    {
+        shaper_ = shaper;
+    }
 
     std::uint16_t atlas_width() const
     {
@@ -118,6 +125,10 @@ class Font
     };
 
     const font_format::Glyph *find(std::uint32_t codepoint) const;
+    bool has_baked(std::uint32_t codepoint) const;
+    // Lays out one line from pen x (quads null: measures only); returns the advance.
+    float walk(std::string_view text, float x, float y, float size, float tracking,
+               std::vector<GlyphQuad> *quads) const;
     float kern(std::uint32_t first, std::uint32_t second) const;
     // The glyph for *codepoint here or in a fallback; a face that has none
     // draws '?' (and *codepoint becomes '?'). glyph is null when even that is
@@ -129,11 +140,15 @@ class Font
     std::vector<font_format::Kern> kerns_;
     std::vector<std::uint8_t> atlas_;
     std::vector<Fallback> fallbacks_;
+    Shaper *shaper_ = nullptr;
     std::string error_;
 };
 
 // Decodes the next UTF-8 codepoint from text at *index (advancing it);
 // invalid bytes decode as U+FFFD.
 std::uint32_t next_codepoint(std::string_view text, std::size_t *index);
+// Advances *index past the next code point and any that join it (marks,
+// conjuncts): a place where text may be cut without breaking a letter.
+void next_cluster(std::string_view text, std::size_t *index);
 
 } // namespace hui::gfx

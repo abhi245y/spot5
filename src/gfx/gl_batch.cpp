@@ -335,12 +335,25 @@ bool GlBatch::init()
 
 std::uint32_t GlBatch::create_font_texture(const Font &font)
 {
+    return create_font_texture(font.atlas_width(), font.atlas_height(), font.atlas().data());
+}
+
+void GlBatch::update_font_texture(std::uint32_t handle, int y, int rows, int width,
+                                  const std::uint8_t *r8)
+{
+    const GLuint texture = is_font_handle(handle) ? font_textures_[(handle & 0xfu) - 1] : handle;
+    glBindTexture(GL_TEXTURE_2D, texture);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, y, width, rows, GL_RED, GL_UNSIGNED_BYTE, r8);
+}
+
+std::uint32_t GlBatch::create_font_texture(int width, int height, const std::uint8_t *r8)
+{
     GLuint texture = 0;
     glGenTextures(1, &texture);
     glBindTexture(GL_TEXTURE_2D, texture);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, font.atlas_width(), font.atlas_height(), 0, GL_RED,
-                 GL_UNSIGNED_BYTE, font.atlas().data());
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, width, height, 0, GL_RED, GL_UNSIGNED_BYTE, r8);
     // One level only: mip chains leave ps5-opengl's batched fast path.
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);

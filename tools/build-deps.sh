@@ -3,7 +3,8 @@
 # network layer, with the app's PS5 compiler wrapper.
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# Output: build/deps/libmbedtls.a, build/deps/libwebpdec.a, build/deps/libbell.a
+# Output: build/deps/libmbedtls.a, build/deps/libwebpdec.a, build/deps/libharfbuzz.a,
+# build/deps/libbell.a
 # ponytail: rebuilds everything each run (~1 min); move into the ninja graph if
 # that starts to hurt.
 
@@ -26,6 +27,14 @@ webp_version=1.4.0
 webp_sha256=61f873ec69e3be1b99535634340d5bde750b2e4447caa1db9f61be3fd49ab1e5
 webp_tar="$root/.deps/src/libwebp-$webp_version.tar.gz"
 webp="$root/.deps/src/libwebp-$webp_version"
+
+# HarfBuzz: text shaping for scripts whose letters join and reorder (Malayalam,
+# Devanagari, ...). One-file build (src/harfbuzz.cc), single-threaded: only the
+# draw thread shapes text.
+hb_version=11.2.1
+hb_sha256=093714c8548a285094685f0bdc999e202d666b59eeb3df2ff921ab68b8336a49
+hb_tar="$root/.deps/src/harfbuzz-$hb_version.tar.xz"
+hb="$root/.deps/src/harfbuzz-$hb_version"
 
 mkdir -p "$root/.deps/src" "$out"
 
@@ -88,6 +97,12 @@ if [[ ! -f $webp_tar ]]; then
 fi
 echo "$webp_sha256  $webp_tar" | sha256sum --check --quiet
 [[ -d $webp ]] || tar -xzf "$webp_tar" -C "$root/.deps/src"
+if [[ ! -f $hb_tar ]]; then
+    curl -sSL -o "$hb_tar" \
+        "https://github.com/harfbuzz/harfbuzz/releases/download/$hb_version/harfbuzz-$hb_version.tar.xz"
+fi
+echo "$hb_sha256  $hb_tar" | sha256sum --check --quiet
+[[ -d $hb ]] || tar -xJf "$hb_tar" -C "$root/.deps/src"
 
 compile "$out/mbedtls" mbedtls_flags "$mbedtls"/library/*.c
 rm -f "$out/libmbedtls.a" && llvm-ar rcs "$out/libmbedtls.a" "$out"/mbedtls/*.o
@@ -97,6 +112,10 @@ rm -f "$out/libmbedtls.a" && llvm-ar rcs "$out/libmbedtls.a" "$out"/mbedtls/*.o
 webp_flags=(-std=c11 -O2 -w -ffunction-sections -fdata-sections -I"$webp")
 compile "$out/webp" webp_flags "$webp"/src/dec/*.c "$webp"/src/dsp/*.c "$webp"/src/utils/*.c
 rm -f "$out/libwebpdec.a" && llvm-ar rcs "$out/libwebpdec.a" "$out"/webp/*.o
+
+hb_flags=(-std=c++17 -O2 -w -fno-exceptions -fno-rtti -ffunction-sections -fdata-sections -DHB_NO_MT)
+compile "$out/harfbuzz" hb_flags "$hb/src/harfbuzz.cc"
+rm -f "$out/libharfbuzz.a" && llvm-ar rcs "$out/libharfbuzz.a" "$out"/harfbuzz/*.o
 
 bell_sources=(
     "$bell/main/io/TLSSocket.cpp"
