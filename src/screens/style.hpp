@@ -10,6 +10,7 @@
 #include <string_view>
 
 #include "gfx/draw_list.hpp"
+#include "ui/glyphs.hpp"
 
 namespace screens::style
 {
@@ -30,6 +31,34 @@ const Color kMint = Color::rgb(0x9ff0c0);   // pale end of the accent
 const Color kDeep = Color::rgb(0x0b3d22);   // dark end of the accent
 const Color kDanger = Color::rgb(0xff6b6b); // errors
 const Color kClear = Color::rgb(0x000000, 0.0f);
+
+// ---- button hints: one quiet row at the bottom right ----
+
+// White glyph shapes on faint caps (no DualSense colours) and grey labels.
+inline ui::GlyphStyle hint_style()
+{
+    return {kInk.with_alpha(0.07f), kInk.with_alpha(0.38f), kInk.with_alpha(0.92f), kInk.with_alpha(0.62f),
+            false};
+}
+
+// Smaller than the kit's default, on the row the kit uses.
+inline ui::HintLayout hint_layout()
+{
+    ui::HintLayout layout;
+    layout.size = 32.0f;
+    layout.text_size = 22.0f;
+    layout.cy = 1016.0f;
+    layout.item_gap = 34.0f;
+    return layout;
+}
+
+// A dark fade along the bottom, so content scrolled down there never sits
+// under the hints.
+inline void hint_fade(gfx::DrawList &list, float alpha = 1.0f)
+{
+    list.gradient_rect({0, gfx::kVirtualHeight - 170.0f, gfx::kVirtualWidth, 170.0f}, 0, kClear,
+                       Color::rgb(0x000000, 0.62f * alpha));
+}
 
 // "3:07" (or "1:02:03" for long episodes).
 inline void format_time(char *out, std::size_t size, float seconds)

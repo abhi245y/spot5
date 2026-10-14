@@ -501,17 +501,17 @@ class Launch final : public Screen
         const ui::Fonts &fonts = context_.fonts;
         const bool failed = model.connection == Connection::error;
         list.push_opacity(tween::stagger(age_, 4, 0.08f, 0.6f));
-        const ui::GlyphStyle glyphs = ui::GlyphStyle::dark();
+        const ui::GlyphStyle glyphs = style::hint_style();
         if (failed)
         {
             const ui::Hint hints[] = {{ui::Button::cross, "Try again"},
                                       {ui::Button::touchpad, "Settings"}};
-            ui::draw_hints(list, fonts, glyphs, hints, 2, kRight, true);
+            ui::draw_hints(list, fonts, glyphs, hints, 2, kRight, true, style::hint_layout());
         }
         else
         {
             const ui::Hint hints[] = {{ui::Button::touchpad, "Settings"}};
-            ui::draw_hints(list, fonts, glyphs, hints, 1, kRight, true);
+            ui::draw_hints(list, fonts, glyphs, hints, 1, kRight, true, style::hint_layout());
         }
         list.pop_opacity();
     }

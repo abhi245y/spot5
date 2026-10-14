@@ -1520,8 +1520,8 @@ class ControlRoom final : public Screen
     void draw_hints(Frame &frame) const
     {
         const ui::Fonts &fonts = context_.fonts;
-        const ui::GlyphStyle style = ui::GlyphStyle::dark();
-        const ui::HintLayout layout;
+        const ui::GlyphStyle glyphs = style::hint_style();
+        const ui::HintLayout layout = style::hint_layout();
         const float in = tween::stagger(age_, 9, 0.07f, 0.5f);
         gfx::DrawList &list = hint_list(frame, hints_shown_);
         gfx::DrawList &old_list = hint_list(frame, hints_previous_);
@@ -1546,7 +1546,7 @@ class ControlRoom final : public Screen
         float x = gfx::kVirtualWidth - kMargin;
         list.push_opacity(in);
         const float kept_width =
-            ui::draw_hints(list, fonts, style, now + (now_count - kept), kept, x, true, layout);
+            ui::draw_hints(list, fonts, glyphs, now + (now_count - kept), kept, x, true, layout);
         list.pop_opacity();
         if (!hints_.running)
             return;
@@ -1554,10 +1554,10 @@ class ControlRoom final : public Screen
             x -= kept_width + layout.item_gap;
         const float t = hints_.progress();
         old_list.push_opacity(in * (1.0f - tween::smoothstep(t * 2.0f)));
-        ui::draw_hints(old_list, fonts, style, before, before_count - shared, x, true, layout);
+        ui::draw_hints(old_list, fonts, glyphs, before, before_count - shared, x, true, layout);
         old_list.pop_opacity();
         list.push_opacity(in * tween::smoothstep(t * 2.0f - 1.0f));
-        ui::draw_hints(list, fonts, style, now, now_count - shared, x, true, layout);
+        ui::draw_hints(list, fonts, glyphs, now, now_count - shared, x, true, layout);
         list.pop_opacity();
     }
 
