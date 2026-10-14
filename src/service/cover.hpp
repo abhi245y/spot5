@@ -79,11 +79,11 @@ class CoverLoader
     std::atomic<int> connections_{0}; // TLS connections opened
     static void *entry(void *self);
     void run();
-    // A worker's kept-alive connection, reused for every cover from one host.
+    // A worker's kept-alive connections, one per image host (album art,
+    // mosaics and artist images come from different ones).
     struct Connection
     {
-        std::unique_ptr<bell::HTTPClient::Response> response;
-        std::string host;
+        std::map<std::string, std::unique_ptr<bell::HTTPClient::Response>> by_host;
     };
     std::vector<std::uint8_t> fetch(const std::string &url, Connection &connection);
     void save(const std::string &url, const std::vector<std::uint8_t> &bytes);

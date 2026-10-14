@@ -262,19 +262,19 @@ std::vector<std::uint8_t> CoverLoader::fetch(const std::string &url, Connection 
             return {cached.begin(), cached.end()};
     }
     std::vector<std::uint8_t> bytes;
-    // The worker's kept-alive connection, reused for every cover from the same
-    // host: a new TLS handshake per 30 KB cover was most of the time.
+    // The worker's kept-alive connection to this cover's host, reused for every
+    // cover from it: a new TLS handshake per 30 KB cover was most of the time.
     const std::string host = url.substr(0, url.find('/', url.find("://") + 3));
     try
     {
-        const bool fresh = !connection.response || connection.host != host;
+        std::unique_ptr<bell::HTTPClient::Response> &slot = connection.by_host[host];
+        const bool fresh = !slot;
         if (fresh)
         {
-            connection.response = std::make_unique<bell::HTTPClient::Response>();
-            connection.response->connect(url);
-            connection.host = host;
+            slot = std::make_unique<bell::HTTPClient::Response>();
+            slot->connect(url);
         }
-        bell::HTTPClient::Response &response = *connection.response;
+        bell::HTTPClient::Response &response = *slot;
         const int opened_before = response.openCount();
         const long long started = now_ms();
         response.get(url);
@@ -286,7 +286,7 @@ std::vector<std::uint8_t> CoverLoader::fetch(const std::string &url, Connection 
         download_ms_.fetch_add(now_ms() - started, std::memory_order_relaxed);
         const int status = response.statusCode();
         if (!response.hasContentLength())
-            connection.response.reset(); // the body's end is unknown: no further request on it
+            slot.reset(); // the body's end is unknown: no further request on it
         if (status != 200)
         {
             hui::sys::log("[APP] cover HTTP %d: %s", status, url.c_str());
@@ -295,7 +295,7 @@ std::vector<std::uint8_t> CoverLoader::fetch(const std::string &url, Connection 
     }
     catch (const std::exception &e)
     {
-        connection.response.reset(); // start the next cover on a fresh connection
+        connection.by_host.erase(host); // start the next cover from this host on a fresh connection
         hui::sys::log("[APP] cover download failed: %s", e.what());
         return {};
     }
