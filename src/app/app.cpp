@@ -31,6 +31,7 @@
 #include "screens/shell.hpp"
 #include "spotify/cover.hpp"
 #include "spotify/home.hpp"
+#include "third_party/stb/stb_image.h"
 #include "ui/fonts.hpp"
 
 extern "C" std::size_t hui_heap_capacity(void); // runtime/app_heap.c
@@ -391,6 +392,22 @@ void App::run()
     CardArt card_art(renderer);
     screens::Context context{fonts, settings};
     context.art = [&card_art](const std::string &url) { return card_art.get(url); };
+    for (int i = 0; i < 4; ++i)
+    {
+        std::string data;
+        int w = 0, h = 0, n = 0;
+        std::uint8_t *px = save::read_file(std::string("/app0/assets/logo/") + screens::kLogoFiles[i], &data)
+                               ? stbi_load_from_memory(reinterpret_cast<const std::uint8_t *>(data.data()),
+                                                       static_cast<int>(data.size()), &w, &h, &n, 4)
+                               : nullptr;
+        if (!px)
+        {
+            sys::log("[APP] logo layer %s missing", screens::kLogoFiles[i]);
+            continue;
+        }
+        context.logo[i] = renderer.batch().create_texture(w, h, px);
+        stbi_image_free(px);
+    }
     const screens::About about = about_facts();
     std::int64_t save_at = 0; // when to write settings.json; 0: nothing pending
     screens::Shell shell(context);

@@ -148,7 +148,7 @@ constexpr Row kAboutRows[] = {
      Kind::action, Field::reset},
 };
 constexpr Row kQuitRows[] = {
-    {"Quit Spotify", "The music stops and the app closes. The PS button can also close it.",
+    {"Quit Spot5", "The music stops and the app closes. The PS button can also close it.",
      Kind::action, Field::quit},
 };
 
@@ -1301,7 +1301,7 @@ class ControlRoom final : public Screen
         const ui::Fonts &fonts = context_.fonts;
         const std::string version = "Version " + model.about.version;
         const char *labels[] = {"APPLICATION", "ENGINE", "THIS CONSOLE", "LICENCES"};
-        const std::string values[] = {"Spotify for PS5", "cspot " + model.about.engine,
+        const std::string values[] = {"Spot5", "cspot " + model.about.engine,
                                       model.about.address.empty() ? "Unknown" : model.about.address,
                                       "GPL-3.0"};
         const char *notes[] = {version.c_str(), "Spotify Connect, login5, verified TLS",
@@ -1317,8 +1317,12 @@ class ControlRoom final : public Screen
                                kInk.with_alpha(0.06f));
             ui::text(list, fonts.semibold, labels[i], tile.x + kRowPad, tile.y + 40, 16,
                      kInk.with_alpha(0.5f), gfx::Align::left, 3.5f);
+            // The application's name follows its mark.
+            const float name_x = tile.x + kRowPad + (i == 0 ? 56.0f : 0.0f);
+            if (i == 0)
+                draw_logo(list, context_, {tile.x + kRowPad - 4, tile.y + 46, 50, 50});
             ui::text(list, i == 2 ? fonts.mono : fonts.semibold,
-                     fonts.semibold.font->fit(values[i], 34, w - 2 * kRowPad), tile.x + kRowPad,
+                     fonts.semibold.font->fit(values[i], 34, w - 2 * kRowPad), name_x,
                      tile.y + 87, 34, kInk);
             ui::text(list, fonts.regular, fonts.regular.font->fit(notes[i], 22, w - 2 * kRowPad),
                      tile.x + kRowPad, tile.y + 124, 22, kInk.with_alpha(0.6f));
@@ -1479,7 +1483,7 @@ class ControlRoom final : public Screen
         const char *title = shown == Ask::forget ? "Forget this login?"
                             : shown == Ask::clear ? "Clear the cache?"
                             : shown == Ask::reset ? "Reset all settings?"
-                                                  : "Quit Spotify?";
+                                                  : "Quit Spot5?";
         const char *body =
             shown == Ask::forget
                 ? "The saved login is deleted from this console. To play here again you will need "

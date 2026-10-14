@@ -28,7 +28,7 @@ using gfx::Rect;
 using namespace style;
 
 // ---- title ----
-constexpr const char *kWord = "SPOTIFY";
+constexpr const char *kWord = "SPOT5";
 constexpr float kLogoSize = 168.0f;
 constexpr float kLogoTracking = 12.0f;
 constexpr float kLogoBaseline = 520.0f;
@@ -192,32 +192,67 @@ class Launch final : public Screen
     bool finished() const { return ready_ && ready_age_ >= kHandOver; }
 
   private:
-    // The app icon's mark above the wordmark: three tilted arcs, widest on
-    // top (sce_sys/icon0.png).
+    // The Spot5 mark above the wordmark: the arcs pop in one by one, bottom
+    // to top, like sound going out; a light sweeps across a beat before the
+    // wordmark's, then it breathes while the app loads.
     void draw_emblem(gfx::DrawList &list, float cy, float in) const
     {
-        const float lit = 0.32f + 0.10f * ui::breathe(clock_, 3.0f);
+        constexpr float kSide = 200.0f;
+        constexpr float kLogoSweepFirst = 0.95f;
+        // Each arc's middle in its frame (tools/icon/split_logo.py prints them).
+        constexpr float kArcCentre[3][2] = {{0.499f, 0.276f}, {0.523f, 0.645f}, {0.458f, 0.774f}};
+        const bool reduced = context_.settings.reduced_motion;
+        const float t = age_;
+        const Rect r{kCentreX - kSide * 0.5f, cy - kSide * 0.5f, kSide, kSide};
         list.push_opacity(in);
-        list.glow({kCentreX - 12, cy + 2, 24, 24}, 12, 70, kGreen.with_alpha(lit));
-        constexpr float kHalf[] = {46.0f, 38.0f, 30.0f};    // half the chord
-        constexpr float kSag[] = {13.0f, 10.0f, 7.5f};      // how far it bows up
-        constexpr float kThick[] = {12.0f, 10.0f, 8.0f};
-        for (int i = 0; i < 3; ++i)
+        list.glow(r.inset(40), 30, 90, kGreen.with_alpha(0.22f + 0.10f * ui::breathe(clock_, 3.0f)));
+        for (int i = 2; i >= 0; --i)
         {
-            // Each arc lights up in turn, top to bottom.
-            const float wave = context_.settings.reduced_motion
-                                   ? 1.0f
-                                   : 0.55f + 0.45f * ui::breathe(clock_ - 0.25f * i, 2.2f);
-            const float radius = (kHalf[i] * kHalf[i] + kSag[i] * kSag[i]) / (2.0f * kSag[i]);
-            const float half_angle = std::asin(kHalf[i] / radius);
-            const float top = cy - 14.0f + 25.0f * static_cast<float>(i);
-            list.arc(kCentreX, top + radius, radius + kThick[i] * 0.5f, kThick[i], -half_angle - 0.12f,
-                     2.0f * half_angle, gfx::mix(kMint, kGreen, 0.3f * i).with_alpha(wave));
+            const float p = tween::clamp01((t - 0.1f - 0.18f * static_cast<float>(2 - i)) / 0.5f);
+            if (p <= 0.0f || !context_.logo[i])
+                continue;
+            const float scale = reduced ? 1.0f : 0.3f + 0.7f * tween::back_out(p);
+            list.push_opacity(tween::clamp01(p * 4.0f));
+            list.push_transform(scale, r.x + r.w * kArcCentre[i][0], r.y + r.h * kArcCentre[i][1], 0, 0);
+            list.image(context_.logo[i], r, gfx::kFullUv, Color::rgb(0xffffff));
+            list.pop_transform();
+            list.pop_opacity();
         }
-        const float rule = 260.0f * in;
-        list.gradient_rect_h({kCentreX - 74 - rule, cy + 6, rule, 2}, 1, kClear,
-                             kGreen.with_alpha(0.7f));
-        list.gradient_rect_h({kCentreX + 74, cy + 6, rule, 2}, 1, kGreen.with_alpha(0.7f), kClear);
+        // The light: the white silhouette drawn in thin slanted strips,
+        // finer than the wordmark's so the gloss reads as one smooth band.
+        const float cycle = std::fmod(t + kSweepPeriod - kLogoSweepFirst, kSweepPeriod) / kSweepSeconds;
+        if (!reduced && context_.logo[3] && t > kLogoSweepFirst && cycle < 1.0f)
+        {
+            constexpr int kSub = 4;   // strips per profile step
+            constexpr int kRows = 18;
+            const float strip_w = kSweepStrip / kSub;
+            const float band = kSweepStrip * static_cast<float>(kSweepStrips);
+            const float centre = tween::lerp(r.x - band, r.x + r.w + band, tween::smoothstep(cycle));
+            const float row_h = r.h / static_cast<float>(kRows);
+            const float lean_step = kSweepLean * static_cast<float>(kSweepRows) / static_cast<float>(kRows);
+            for (int row = 0; row < kRows; ++row)
+            {
+                const float lean = lean_step * static_cast<float>(kRows - 1 - row);
+                for (int k = 0; k < kSweepStrips * kSub; ++k)
+                {
+                    const float at = (static_cast<float>(k) + 0.5f) / kSub - 0.5f;
+                    const int lo = std::clamp(static_cast<int>(std::floor(at)), 0, kSweepStrips - 1);
+                    const int hi = std::min(lo + 1, kSweepStrips - 1);
+                    const float alpha = tween::lerp(kSweepProfile[lo], kSweepProfile[hi],
+                                                    tween::clamp01(at - static_cast<float>(lo)));
+                    // A piece of the silhouette with its own slice of the texture:
+                    // image quads are not grown, so the pieces tile without seams.
+                    const float left = std::max(r.x, centre + lean - band * 0.5f + strip_w * static_cast<float>(k));
+                    const float right = std::min(r.x + r.w, left + strip_w);
+                    if (right <= left)
+                        continue;
+                    const float top = r.y + row_h * static_cast<float>(row);
+                    list.image(context_.logo[3], {left, top, right - left, row_h},
+                               {(left - r.x) / r.w, (top - r.y) / r.h, (right - left) / r.w, row_h / r.h},
+                               Color::rgb(0xffffff, 0.75f * alpha));
+                }
+            }
+        }
         list.pop_opacity();
     }
 
@@ -242,7 +277,7 @@ class Launch final : public Screen
                      gfx::Align::left, tracking);
         };
 
-        draw_emblem(list, top - 110.0f + 20.0f * (1.0f - tween::stagger(t, 0, 0.1f, 0.7f)),
+        draw_emblem(list, top - 150.0f + 20.0f * (1.0f - tween::stagger(t, 0, 0.1f, 0.7f)),
                     tween::stagger(t, 0, 0.1f, 0.7f));
 
         // ---- the wordmark, back to front ----
@@ -302,24 +337,6 @@ class Launch final : public Screen
             }
         }
         list.pop_transform();
-        list.pop_opacity();
-
-        // ---- the plate under the wordmark opens from the middle ----
-        const float plate = tween::cubic_out((t - 0.5f) / 0.5f);
-        const float opened = tween::quint_out((t - 0.5f) / 0.8f);
-        const float half = (width * 0.5f + 20.0f) * opened;
-        const Rect left{kCentreX - half, baseline + 40, half, 46};
-        const Rect right{kCentreX, baseline + 40, half, 46};
-        list.push_opacity(plate);
-        list.gradient_rect_h(left, 0, kClear, kGreen.with_alpha(0.18f));
-        list.gradient_rect_h(right, 0, kGreen.with_alpha(0.18f), kClear);
-        for (float edge : {left.y, left.y + left.h - 1.5f})
-        {
-            list.gradient_rect_h({left.x, edge, half, 1.5f}, 0, kClear, kGreen.with_alpha(0.6f));
-            list.gradient_rect_h({right.x, edge, half, 1.5f}, 0, kGreen.with_alpha(0.6f), kClear);
-        }
-        ui::text(list, fonts.semibold, "FOR PS5", kCentreX + 5, left.y + 31, 22,
-                 kInk.with_alpha(tween::cubic_out((t - 0.8f) / 0.5f)), gfx::Align::center, 10.0f);
         list.pop_opacity();
     }
 

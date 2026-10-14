@@ -618,7 +618,8 @@ class LibraryScreen final : public Screen
         // The tabs, as on Home: Library is the one underlined.
         list.push_opacity(in);
         const char *tabs[] = {"Home", "Library"};
-        float x = kMargin;
+        draw_logo(list, context_, {kMargin - 4, 56, 52, 52});
+        float x = kMargin + 64;
         for (int i = 0; i < 2; ++i)
         {
             const bool active = i == 1;

@@ -63,7 +63,21 @@ struct Context
     // call every frame for every visible card.
     std::function<Art(const std::string &url)> art;
     std::vector<Request> requests; // added by screens; the app sends them on, then clears
+    // The Spot5 mark (assets/logo): arcs top to bottom, then the white shine
+    // silhouette. 0 where a file was missing.
+    std::uint32_t logo[4] = {};
 };
+
+// The Spot5 mark filling the square r.
+inline void draw_logo(gfx::DrawList &list, const Context &context, const gfx::Rect &r, float alpha = 1.0f)
+{
+    for (int i = 0; i < 3; ++i)
+        if (context.logo[i])
+            list.image(context.logo[i], r, gfx::kFullUv, gfx::Color::rgb(0xffffff, alpha));
+}
+
+// Logo layer files, in Context::logo order.
+inline constexpr const char *kLogoFiles[4] = {"arc-0.png", "arc-1.png", "arc-2.png", "shine.png"};
 
 class Screen
 {

@@ -394,7 +394,8 @@ class Home final : public Screen
         const float in = tween::stagger(age_, 0, 0.05f, 0.5f);
         list.push_opacity(in);
         const char *tabs[] = {"Home", "Library"};
-        float x = kMargin;
+        draw_logo(list, context_, {kMargin - 4, 56, 52, 52});
+        float x = kMargin + 64;
         for (int i = 0; i < 2; ++i)
         {
             const bool active = i == 0;

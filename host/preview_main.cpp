@@ -268,7 +268,11 @@ screens::Art preview_art(const std::string &url)
 const std::vector<Beat> &script()
 {
     static const std::vector<Beat> beats = {
-        {1.4f, [](Model &m) { m.step = Step::certificates; }, 0, "01-launch-title"},
+        {0.3f, [](Model &m) { m.step = Step::certificates; }, 0, "01a-logo-pop"},
+        {0.2f, nullptr, 0, "01b-logo-pop"},
+        {0.2f, nullptr, 0, "01c-logo-pop"},
+        {0.38f, nullptr, 0, "01d-logo-sweep"},
+        {0.32f, nullptr, 0, "01-launch-title"},
         {0.5f, [](Model &m) { m.step = Step::login; }},
         {2.2f, [](Model &m) { m.step = Step::connect; }, 0, "02-launch-connecting"},
         {1.2f,
@@ -471,6 +475,19 @@ int main(int argc, char **argv)
     screens::Settings settings;
     screens::Context context{fonts, settings};
     context.art = preview_art;
+    for (int i = 0; i < 4; ++i)
+    {
+        std::string data;
+        int w = 0, h = 0, n = 0;
+        if (!save::read_file(assets + "/logo/" + screens::kLogoFiles[i], &data))
+            continue;
+        if (std::uint8_t *px = stbi_load_from_memory(reinterpret_cast<const std::uint8_t *>(data.data()),
+                                                     static_cast<int>(data.size()), &w, &h, &n, 4))
+        {
+            context.logo[i] = renderer.batch().create_texture(w, h, px);
+            stbi_image_free(px);
+        }
+    }
     g_renderer = &renderer;
     g_fixture = assets + "/../tests/home-fixture";
     std::remove((g_fixture + "/missing-covers.txt").c_str());
