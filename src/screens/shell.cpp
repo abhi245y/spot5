@@ -154,11 +154,15 @@ void Shell::update(const Model &model, const InputFrame &input, float dt, ui::Fe
     // The touchpad, on any screen: a tap (released within kTapSeconds)
     // opens Control Room or closes it; held for kQuitSeconds it quits, with a
     // ring filling in the middle and a rumble growing every half second.
+    // Timed by the real clock: dt is clamped, so slow frames would stretch it.
     bool tapped = false;
     if (input.is_held(Action::touch) || input.is_pressed(Action::touch))
     {
+        const std::int64_t now = hui::sys::monotonic_us();
+        if (touch_down_us_ == 0)
+            touch_down_us_ = now;
         const float before = touch_held_;
-        touch_held_ += dt;
+        touch_held_ = static_cast<float>(now - touch_down_us_) / 1e6f;
         if (touch_held_ >= kTapSeconds && !quit_sent_)
         {
             quit_progress_ = std::min(1.0f, touch_held_ / kQuitSeconds);
@@ -175,7 +179,8 @@ void Shell::update(const Model &model, const InputFrame &input, float dt, ui::Fe
     }
     else
     {
-        tapped = touch_held_ > 0.0f && touch_held_ < kTapSeconds;
+        tapped = touch_down_us_ != 0 && touch_held_ < kTapSeconds;
+        touch_down_us_ = 0;
         touch_held_ = 0.0f;
     }
     quit_shown_.target = touch_held_ >= kTapSeconds || quit_sent_ ? 1.0f : 0.0f;

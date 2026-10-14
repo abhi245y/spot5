@@ -12,6 +12,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <memory>
 #include <vector>
 
@@ -91,7 +92,8 @@ class Shell
     std::string status_text_, status_previous_;
     tween::Timer status_swap_;
     // The touchpad: a tap opens / closes Control Room; holding it quits.
-    float touch_held_ = 0.0f;    // seconds the touchpad has been down
+    std::int64_t touch_down_us_ = 0; // when the touchpad went down (real clock); 0: up
+    float touch_held_ = 0.0f;        // seconds it has been down
     float quit_progress_ = 0.0f; // 0..1 of the hold, kept while the ring fades
     bool quit_sent_ = false;
     tween::Spring quit_shown_;

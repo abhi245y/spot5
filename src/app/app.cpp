@@ -432,6 +432,8 @@ void App::run()
     PadSample samples[64];
     std::int64_t last = sys::monotonic_us();
     std::uint64_t frames = 0;
+    std::int64_t status_at = last;       // the last per-minute status line
+    std::uint64_t status_frames = 0;     // frames drawn since then
 
     for (;;)
     {
@@ -513,12 +515,17 @@ void App::run()
         }
         if (++frames == 1)
             sys::log("[APP] first frame; splash hidden=%d", sys::hide_splash_screen() ? 1 : 0);
-        if (frames % 3600 == 0) // about once a minute: how much memory the app really uses
+        ++status_frames;
+        if (const std::int64_t at = sys::monotonic_us(); at - status_at >= 60000000) // once a minute
         {
+            // How much memory the app really uses, and how fast it draws.
             std::size_t live = 0, peak = 0, failures = 0;
             hui_heap_stats(&live, &peak, nullptr, &failures);
-            sys::log("[APP] heap live %zu MB, peak %zu MB of %zu MB, failures %zu", live >> 20, peak >> 20,
-                     hui_heap_capacity() >> 20, failures);
+            const double fps = static_cast<double>(status_frames) * 1e6 / static_cast<double>(at - status_at);
+            sys::log("[APP] heap live %zu MB, peak %zu MB of %zu MB, failures %zu; %.1f fps", live >> 20, peak >> 20,
+                     hui_heap_capacity() >> 20, failures, fps);
+            status_at = at;
+            status_frames = 0;
         }
     }
 }
