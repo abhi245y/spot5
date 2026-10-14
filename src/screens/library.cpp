@@ -643,7 +643,7 @@ class LibraryScreen final : public Screen
         // Filter chips between L2 and R2; one green tab slides under the labels.
         in = tween::stagger(age_, 1, 0.07f, 0.5f);
         list.push_opacity(in);
-        const ui::GlyphStyle glyphs = ui::GlyphStyle::dark();
+        const ui::GlyphStyle glyphs = style::hint_style();
         const float chip_cy = kChipY + kChipH * 0.5f;
         ui::draw_button(list, fonts, glyphs, ui::Button::l2, kMargin, chip_cy, kShoulder);
         const Rect last = chip_rect(kFilters - 1);
@@ -684,6 +684,7 @@ class LibraryScreen final : public Screen
 
     void draw_hints(gfx::DrawList &list, const Model &model) const
     {
+        style::hint_fade(list); // content scrolled down there fades out before the hints
         list.push_opacity(tween::stagger(age_, 8, 0.08f, 0.5f));
         ui::Hint hints[5];
         int count = 0;
@@ -694,7 +695,7 @@ class LibraryScreen final : public Screen
         hints[count++] = {ui::Button::l1, "Home", ui::Button::r1};
         hints[count++] = {ui::Button::right_stick, "Refresh"};
         hints[count++] = {ui::Button::touchpad, "Settings \xC2\xB7 Hold to quit"};
-        ui::draw_hints(list, context_.fonts, ui::GlyphStyle::dark(), hints, count, kRight, true);
+        ui::draw_hints(list, context_.fonts, style::hint_style(), hints, count, kRight, true, style::hint_layout());
         list.pop_opacity();
     }
 

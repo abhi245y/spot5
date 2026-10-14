@@ -623,7 +623,8 @@ class Home final : public Screen
     void draw_hints(gfx::DrawList &list, const Model &model) const
     {
         const ui::Fonts &fonts = context_.fonts;
-        const ui::GlyphStyle style = ui::GlyphStyle::dark();
+        const ui::GlyphStyle glyphs = style::hint_style();
+        style::hint_fade(list); // content scrolled down there fades out before the hints
         list.push_opacity(tween::stagger(age_, 8, 0.08f, 0.5f) * (1.0f - dialog_.value));
         ui::Hint hints[5];
         int count = 0;
@@ -634,7 +635,7 @@ class Home final : public Screen
         hints[count++] = {ui::Button::l1, "Library", ui::Button::r1};
         hints[count++] = {ui::Button::right_stick, "Refresh"};
         hints[count++] = {ui::Button::touchpad, "Settings \xC2\xB7 Hold to quit"};
-        ui::draw_hints(list, fonts, style, hints, count, kRight, true);
+        ui::draw_hints(list, fonts, glyphs, hints, count, kRight, true, style::hint_layout());
         list.pop_opacity();
     }
 

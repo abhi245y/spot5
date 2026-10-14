@@ -477,6 +477,7 @@ class ArtistScreen final : public Screen
 
     void draw_hints(gfx::DrawList &list, const Model &model, const ArtistPage &) const
     {
+        style::hint_fade(list); // content scrolled down there fades out before the hints
         list.push_opacity(tween::stagger(age_, 5, 0.08f, 0.5f));
         const char *cross = zone_ == Zone::actions   ? (index_[0] == 1 ? "Shuffle" : "Play")
                             : zone_ == Zone::popular ? "Play from here"
@@ -487,7 +488,7 @@ class ArtistScreen final : public Screen
         hints[count++] = {ui::Button::circle, "Back"};
         if (model.has_track)
             hints[count++] = {ui::Button::triangle, "Now Playing"};
-        ui::draw_hints(list, context_.fonts, ui::GlyphStyle::dark(), hints, count, kRight, true);
+        ui::draw_hints(list, context_.fonts, style::hint_style(), hints, count, kRight, true, style::hint_layout());
         list.pop_opacity();
     }
 

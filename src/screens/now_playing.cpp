@@ -1039,7 +1039,7 @@ class NowPlaying final : public Screen
     void draw_hints(gfx::DrawList &list) const
     {
         const ui::Fonts &fonts = context_.fonts;
-        const ui::GlyphStyle style = ui::GlyphStyle::dark();
+        const ui::GlyphStyle glyphs = style::hint_style();
         constexpr const char *kLabels[kControls] = {"Previous", "Play", "Next"};
         const char *play = playing_ ? "Pause" : "Play";
         const char *queue = queue_open_ ? "Hide queue" : "Show queue";
@@ -1065,7 +1065,7 @@ class NowPlaying final : public Screen
         }
         if (queue_ptr_)
             hints[count++] = {ui::Button::square, queue};
-        ui::draw_hints(list, fonts, style, hints, count, 1824, true);
+        ui::draw_hints(list, fonts, glyphs, hints, count, 1824, true, style::hint_layout());
         list.pop_opacity();
     }
 
