@@ -326,7 +326,10 @@ class CardArt
         return {found->second.texture, found->second.palette, found->second.width, found->second.height};
     }
 
-    void download_stats(int &count, long long &total_ms) { loader_.take_download_stats(count, total_ms); }
+    void download_stats(int &count, long long &total_ms, int &connections)
+    {
+        loader_.take_download_stats(count, total_ms, connections);
+    }
 
     // Forgets every cover (Clear cache): they load again when drawn. Safe
     // between frames: the last frame was presented, the next is not drawn yet.
@@ -484,18 +487,18 @@ void App::run()
                 return url.empty() ? screens::Art{} : card_art.get(url);
             });
         card_art.pump();
-        // Launch: the loader hands over once the first screen's covers are in
-        // (the first two shelves and the first item's banner); every other
+        // Launch: the loader hands over once the first kLaunchCovers covers
+        // (in Home's order) and the first item's banner are in; every other
         // Home cover is asked for too and keeps loading behind Home.
         if (model.step == screens::Step::artwork && model.home)
         {
-            constexpr std::size_t kFirstScreenShelves = 2;
+            constexpr std::size_t kLaunchCovers = 80;
             std::vector<std::string> first, rest;
             const std::vector<screens::Shelf> &shelves = model.home->shelves;
-            for (std::size_t i = 0; i < shelves.size(); ++i)
-                for (const screens::Card &card : shelves[i].cards)
+            for (const screens::Shelf &shelf : shelves)
+                for (const screens::Card &card : shelf.cards)
                     if (!card.image.empty())
-                        (i < kFirstScreenShelves ? first : rest).push_back(card.image);
+                        (first.size() < kLaunchCovers ? first : rest).push_back(card.image);
             if (!shelves.empty() && !shelves.front().cards.empty())
             {
                 const screens::Card &hero = shelves.front().cards.front();
@@ -563,14 +566,14 @@ void App::run()
             std::size_t live = 0, peak = 0, failures = 0;
             hui_heap_stats(&live, &peak, nullptr, &failures);
             const double fps = static_cast<double>(status_frames) * 1e6 / static_cast<double>(at - status_at);
-            int downloads = 0;
+            int downloads = 0, connections = 0;
             long long download_ms = 0;
-            card_art.download_stats(downloads, download_ms);
+            card_art.download_stats(downloads, download_ms, connections);
             sys::log("[APP] heap live %zu MB, peak %zu MB of %zu MB, failures %zu; %.1f fps, worst frame %.0f ms, "
-                     "%d over 25 ms; covers downloaded %d, %lld ms each",
+                     "%d over 25 ms; covers downloaded %d, %lld ms each, %d new connections",
                      live >> 20, peak >> 20, hui_heap_capacity() >> 20, failures, fps,
                      static_cast<double>(worst_frame) * 1000.0, slow_frames, downloads,
-                     downloads > 0 ? download_ms / downloads : 0LL);
+                     downloads > 0 ? download_ms / downloads : 0LL, connections);
             status_at = at;
             status_frames = 0;
             worst_frame = 0.0f;

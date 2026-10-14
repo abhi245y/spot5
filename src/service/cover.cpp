@@ -245,10 +245,11 @@ void CoverLoader::finished(const std::string &url)
 
 // The cover's bytes: from the cache if there, else downloaded (and cached).
 // Empty if the download failed.
-void CoverLoader::take_download_stats(int &count, long long &total_ms)
+void CoverLoader::take_download_stats(int &count, long long &total_ms, int &connections)
 {
     count = downloads_.exchange(0, std::memory_order_relaxed);
     total_ms = download_ms_.exchange(0, std::memory_order_relaxed);
+    connections = connections_.exchange(0, std::memory_order_relaxed);
 }
 
 std::vector<std::uint8_t> CoverLoader::fetch(const std::string &url, Connection &connection)
@@ -266,16 +267,21 @@ std::vector<std::uint8_t> CoverLoader::fetch(const std::string &url, Connection 
     const std::string host = url.substr(0, url.find('/', url.find("://") + 3));
     try
     {
-        if (!connection.response || connection.host != host)
+        const bool fresh = !connection.response || connection.host != host;
+        if (fresh)
         {
             connection.response = std::make_unique<bell::HTTPClient::Response>();
             connection.response->connect(url);
             connection.host = host;
         }
         bell::HTTPClient::Response &response = *connection.response;
+        const int opened_before = response.openCount();
         const long long started = now_ms();
         response.get(url);
         bytes = response.bytes();
+        // Opens during this request (a dropped keep-alive reconnects), plus
+        // the one connect() just made for a new connection.
+        connections_.fetch_add(response.openCount() - opened_before + (fresh ? 1 : 0), std::memory_order_relaxed);
         downloads_.fetch_add(1, std::memory_order_relaxed);
         download_ms_.fetch_add(now_ms() - started, std::memory_order_relaxed);
         const int status = response.statusCode();
