@@ -9,6 +9,8 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <cerrno>
+#include <cstring>
 #include <exception>
 
 #include "BellHTTPServer.h"
@@ -67,6 +69,32 @@ bool send_helper(std::string &error)
 }
 
 constexpr int kPort = 7864; // same as cspot's CLI
+
+// Why the server could not listen: civetweb only says "Failed to setup server
+// ports", so repeat its steps on the port and log the first one that fails.
+void log_bind_failure()
+{
+    const int fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (fd < 0)
+    {
+        hui::sys::log("[APP] pairing: socket() failed: errno %d (%s)", errno, std::strerror(errno));
+        return;
+    }
+    const int on = 1;
+    if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on)) != 0)
+        hui::sys::log("[APP] pairing: SO_REUSEADDR failed: errno %d (%s)", errno, std::strerror(errno));
+    sockaddr_in address{};
+    address.sin_family = AF_INET;
+    address.sin_port = htons(kPort);
+    address.sin_addr.s_addr = htonl(INADDR_ANY);
+    if (bind(fd, reinterpret_cast<sockaddr *>(&address), sizeof(address)) != 0)
+        hui::sys::log("[APP] pairing: bind(0.0.0.0:%d) failed: errno %d (%s)", kPort, errno, std::strerror(errno));
+    else if (listen(fd, 8) != 0)
+        hui::sys::log("[APP] pairing: listen(%d) failed: errno %d (%s)", kPort, errno, std::strerror(errno));
+    else
+        hui::sys::log("[APP] pairing: a plain socket can listen on %d; civetweb's own setup failed", kPort);
+    close(fd);
+}
 // A real login is about 1 KB; refuse anything far larger from the network.
 constexpr long long kMaxBody = 16 * 1024;
 
@@ -87,6 +115,7 @@ std::unique_ptr<Pairing> Pairing::start(const std::string &device_name, std::str
     catch (const std::exception &e)
     {
         error = std::string("Pairing could not start (") + e.what() + ")";
+        log_bind_failure();
         return nullptr;
     }
 
