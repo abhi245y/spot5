@@ -25,6 +25,7 @@
 #include "core/input.hpp"
 #include "core/save_file.hpp"
 #include "gfx/renderer.hpp"
+#include "gfx/shaper.hpp"
 #include "platform/ps5/display_egl.hpp"
 #include "platform/ps5/pad.hpp"
 #include "platform/ps5/system.hpp"
@@ -63,6 +64,8 @@ int console_utc_minutes()
 using namespace hui;
 
 constexpr const char *kFonts = "/app0/assets/fonts/";
+// Scripts the baked fonts lack, shaped and drawn at runtime (gfx::Shaper).
+constexpr const char *kScriptFonts[] = {"NotoSansMalayalam-Regular.ttf"};
 
 bool load_font(gfx::Renderer &renderer, const char *name, gfx::Font &font, ui::FontRef &ref)
 {
@@ -414,6 +417,16 @@ void App::run()
         sys::park();
     }
     display_face.add_fallback(&semibold, fonts.semibold.texture); // Montserrat has no Greek
+    gfx::Shaper shaper;
+    for (const char *name : kScriptFonts)
+    {
+        std::string data;
+        if (!save::read_file(std::string(kFonts) + name, &data) || !shaper.add_face(std::move(data)))
+            sys::log("[APP] font %s failed", name);
+    }
+    shaper.attach(renderer.batch());
+    for (gfx::Font *font : {&regular, &semibold, &display_face, &mono})
+        font->set_shaper(&shaper);
 
     const int utc_minutes = console_utc_minutes();
     Controller controller;
@@ -549,6 +562,7 @@ void App::run()
         pad.tick(dt);
 
         shell.compose(renderer, model);
+        shaper.upload(renderer.batch());
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);

@@ -4,6 +4,8 @@
 
 #include "gfx/font.hpp"
 
+#include "gfx/shaper.hpp"
+
 #include <algorithm>
 #include <cstring>
 
@@ -56,6 +58,20 @@ std::uint32_t next_codepoint(std::string_view text, std::size_t *index)
     }
     *index = i + static_cast<std::size_t>(length);
     return value;
+}
+
+void next_cluster(std::string_view text, std::size_t *index)
+{
+    std::uint32_t previous = next_codepoint(text, index);
+    while (*index < text.size())
+    {
+        std::size_t probe = *index;
+        const std::uint32_t next = next_codepoint(text, &probe);
+        if (!Shaper::joins(previous, next))
+            break;
+        *index = probe;
+        previous = next;
+    }
 }
 
 bool Font::load(std::string_view data)
@@ -133,7 +149,7 @@ std::string Font::fit(std::string_view text, float size, float max_width, float 
     for (std::size_t index = 0; index < text.size();)
     {
         const std::size_t start = index;
-        next_codepoint(text, &index);
+        next_cluster(text, &index);
         std::string candidate(text.substr(0, start));
         while (!candidate.empty() && candidate.back() == ' ')
             candidate.pop_back();
@@ -146,6 +162,11 @@ std::string Font::fit(std::string_view text, float size, float max_width, float 
 }
 
 bool Font::has_glyph(std::uint32_t codepoint) const
+{
+    return has_baked(codepoint) || (shaper_ != nullptr && shaper_->face_for(codepoint) >= 0);
+}
+
+bool Font::has_baked(std::uint32_t codepoint) const
 {
     if (find(codepoint) != nullptr)
         return true;
@@ -170,53 +191,48 @@ Font::Resolved Font::resolve(std::uint32_t *codepoint) const
     return {this, find('?'), 0};
 }
 
-float Font::measure(std::string_view text, float size, float tracking) const
+float Font::walk(std::string_view text, float x, float y, float size, float tracking,
+                 std::vector<GlyphQuad> *quads) const
 {
-    float width = 0.0f;
+    float pen = x;
     std::uint32_t previous = 0;
     const Font *previous_face = nullptr;
     int glyphs = 0;
     for (std::size_t index = 0; index < text.size();)
     {
+        const std::size_t start = index;
         std::uint32_t codepoint = next_codepoint(text, &index);
-        const Resolved resolved = resolve(&codepoint);
-        if (resolved.glyph == nullptr)
+        // A run the baked faces lack goes to the shaper whole: its letters
+        // join and reorder, so they are laid out together.
+        const int shaped = shaper_ != nullptr && !has_baked(codepoint) ? shaper_->face_for(codepoint) : -1;
+        if (shaped >= 0)
+        {
+            for (std::size_t probe = index; probe < text.size();)
+            {
+                const std::uint32_t next = next_codepoint(text, &probe);
+                if (has_baked(next) || !shaper_->covers(shaped, next))
+                    break;
+                index = probe;
+            }
+            if (glyphs++ > 0)
+                pen += tracking;
+            pen += shaper_->shape(shaped, text.substr(start, index - start), pen, y, size, quads);
+            previous = 0;
+            previous_face = nullptr;
             continue;
-        // Each face has metrics of its own; pairs are kerned within one face.
-        const float scale = size / resolved.face->header_.pixel_size;
-        if (previous != 0 && previous_face == resolved.face)
-            width += resolved.face->kern(previous, codepoint) * scale;
-        width += resolved.glyph->advance * scale;
-        previous = codepoint;
-        previous_face = resolved.face;
-        ++glyphs;
-    }
-    return glyphs > 1 ? width + tracking * static_cast<float>(glyphs - 1) : width;
-}
-
-float Font::layout(std::string_view text, float x, float y, float size, Align align,
-                   std::vector<GlyphQuad> &quads, float tracking) const
-{
-    const float width = measure(text, size, tracking);
-    float pen = x;
-    if (align == Align::center)
-        pen -= width * 0.5f;
-    else if (align == Align::right)
-        pen -= width;
-    std::uint32_t previous = 0;
-    const Font *previous_face = nullptr;
-    for (std::size_t index = 0; index < text.size();)
-    {
-        std::uint32_t codepoint = next_codepoint(text, &index);
+        }
         const Resolved resolved = resolve(&codepoint);
         const ff::Glyph *glyph = resolved.glyph;
         if (glyph == nullptr)
             continue;
+        if (glyphs++ > 0)
+            pen += tracking;
         const ff::Header &face = resolved.face->header_;
         const float scale = size / face.pixel_size;
+        // Each face has metrics of its own; pairs are kerned within one face.
         if (previous != 0 && previous_face == resolved.face)
             pen += resolved.face->kern(previous, codepoint) * scale;
-        if (glyph->w > 0 && glyph->h > 0)
+        if (quads != nullptr && glyph->w > 0 && glyph->h > 0)
         {
             const float inverse_w = 1.0f / static_cast<float>(face.atlas_width);
             const float inverse_h = 1.0f / static_cast<float>(face.atlas_height);
@@ -231,12 +247,30 @@ float Font::layout(std::string_view text, float x, float y, float size, Align al
             quad.v1 = static_cast<float>(glyph->y + glyph->h) * inverse_h;
             quad.texture = resolved.texture;
             quad.range = resolved.face->sdf_range(size);
-            quads.push_back(quad);
+            quads->push_back(quad);
         }
-        pen += glyph->advance * scale + tracking;
+        pen += glyph->advance * scale;
         previous = codepoint;
         previous_face = resolved.face;
     }
+    return pen - x;
+}
+
+float Font::measure(std::string_view text, float size, float tracking) const
+{
+    return walk(text, 0.0f, 0.0f, size, tracking, nullptr);
+}
+
+float Font::layout(std::string_view text, float x, float y, float size, Align align,
+                   std::vector<GlyphQuad> &quads, float tracking) const
+{
+    const float width = measure(text, size, tracking);
+    float pen = x;
+    if (align == Align::center)
+        pen -= width * 0.5f;
+    else if (align == Align::right)
+        pen -= width;
+    walk(text, pen, y, size, tracking, &quads);
     return width;
 }
 
@@ -274,10 +308,10 @@ std::vector<std::string> Font::wrap(std::string_view text, float size, float max
                 while (measure(word.substr(start), size) > max_width)
                 {
                     std::size_t end = start;
-                    next_codepoint(word, &end);
+                    next_cluster(word, &end);
                     for (std::size_t next = end; next < word.size(); end = next)
                     {
-                        next_codepoint(word, &next);
+                        next_cluster(word, &next);
                         if (measure(word.substr(start, next - start), size) > max_width)
                             break;
                     }

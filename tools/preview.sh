@@ -36,11 +36,18 @@ for source in "${sources[@]}"; do
     else
         ninja_inputs=("$source" "$cxx")
         ninja_edge CXX "$object" "$cxx" -std=c++20 -O2 -Wall -Wextra \
-            -DGL_GLEXT_PROTOTYPES=1 -I"$root/src" -isystem "$root/third_party/cspot/cspot/bell/external/nlohmann_json/include" \
+            -DGL_GLEXT_PROTOTYPES=1 -I"$root/src" -isystem "$root/.deps/src/harfbuzz-11.2.1/src" -isystem "$root/third_party/cspot/cspot/bell/external/nlohmann_json/include" \
             -MD -MF "$object.d" -c "$source" -o "$object"
     fi
     objects+=("$object")
 done
+# HarfBuzz (fetched by `make deps`), one file, like the console build.
+hb="$root/.deps/src/harfbuzz-11.2.1/src"
+[[ -f $hb/harfbuzz.cc ]] || { echo "HarfBuzz missing: run make deps once" >&2; exit 1; }
+ninja_inputs=("$hb/harfbuzz.cc" "$cxx")
+ninja_edge CXX "$build/obj/harfbuzz.o" "$cxx" -std=c++17 -O2 -w -fno-exceptions -fno-rtti -DHB_NO_MT \
+    -MD -MF "$build/obj/harfbuzz.o.d" -c "$hb/harfbuzz.cc" -o "$build/obj/harfbuzz.o"
+objects+=("$build/obj/harfbuzz.o")
 ninja_inputs=("${objects[@]}")
 ninja_edge LINK "$build/spt_preview" "$cxx" "${objects[@]}" -lEGL -lGL -lm -o "$build/spt_preview"
 if ! ninja_run >"$build/build.log" 2>&1; then
