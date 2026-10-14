@@ -1,4 +1,4 @@
-// ps5-spotify - Spotify Connect for the PS5, without PSN.
+// spot5 - Spotify Connect for the PS5, without PSN.
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "app/app.hpp"

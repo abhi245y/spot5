@@ -6,7 +6,7 @@
 // --wrap for the malloc family whenever this file exists, routing allocations
 // into a fixed sceLibcMspace that is never unmapped.
 //
-// ps5-spotify: the heap lives in direct memory (1 GiB), the pool native PS5
+// spot5: the heap lives in direct memory (1 GiB), the pool native PS5
 // ports use for big allocations: a native app's flexible memory (where plain
 // mmap comes from) is only ~190-448 MiB, which is why 512 and 384 were
 // refused. Recipe from PS5LM docs/RESEARCH.md (PS5SX2, PS5CEMU, ProsperoAI):

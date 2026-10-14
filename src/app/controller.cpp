@@ -1,4 +1,4 @@
-// ps5-spotify - Spotify side of the app, on its own thread.
+// spot5 - Spotify side of the app, on its own thread.
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "app/controller.hpp"
@@ -10,7 +10,7 @@
 #include <random>
 
 #include "platform/ps5/system.hpp"
-#include "spotify/home.hpp"
+#include "service/home.hpp"
 
 namespace app
 {
@@ -275,7 +275,7 @@ void Controller::connect()
     std::shared_ptr<cspot::LoginBlob> login;
     try
     {
-        login = spotify::Session::saved_login(settings_.device_name);
+        login = service::Session::saved_login(settings_.device_name);
     }
     catch (const std::exception &)
     {
@@ -291,7 +291,7 @@ void Controller::connect()
 void Controller::start_pairing()
 {
     std::string error;
-    pairing_ = spotify::Pairing::start(settings_.device_name, error);
+    pairing_ = service::Pairing::start(settings_.device_name, error);
     if (!pairing_)
     {
         set_state(State::Error, error);
@@ -337,9 +337,9 @@ void Controller::start_session(std::shared_ptr<cspot::LoginBlob> login)
         set_state(State::Error, error);
         return;
     }
-    session_ = spotify::Session::start(config, settings_, std::move(login), error,
-                                       [this](spotify::Session::Stage stage) {
-                                           set_step(stage == spotify::Session::Stage::connecting
+    session_ = service::Session::start(config, settings_, std::move(login), error,
+                                       [this](service::Session::Stage stage) {
+                                           set_step(stage == service::Session::Stage::connecting
                                                         ? screens::Step::connect
                                                         : screens::Step::start);
                                        });
@@ -385,13 +385,13 @@ void Controller::step_reconnecting()
 
 void Controller::step_browser()
 {
-    spotify::Browser &browser = session_->browser();
+    service::Browser &browser = session_->browser();
     if (auto page = browser.take_page())
     {
         std::scoped_lock guard(lock_);
         status_.home = std::move(page);
     }
-    if (std::optional<spotify::Resolved> resolved = browser.take_resolved())
+    if (std::optional<service::Resolved> resolved = browser.take_resolved())
     {
         rest_.clear();
         if (!resolved->error.empty())
@@ -440,7 +440,7 @@ void Controller::step_browser()
     }
 
     // A page's track list, then details as they arrive.
-    if (std::optional<spotify::Resolved> opened = browser.take_opened())
+    if (std::optional<service::Resolved> opened = browser.take_opened())
     {
         if (opened->context_uri == page_.card.uri)
         {
@@ -470,7 +470,7 @@ void Controller::step_browser()
         }
         else
         {
-            const std::size_t count = std::min(rest_.size(), spotify::Session::kQueueWindow);
+            const std::size_t count = std::min(rest_.size(), service::Session::kQueueWindow);
             session_->append({rest_.begin(), rest_.begin() + static_cast<std::ptrdiff_t>(count)});
             rest_.erase(rest_.begin(), rest_.begin() + static_cast<std::ptrdiff_t>(count));
             hui::sys::log("[APP] queued %zu more tracks, %zu still to come", count, rest_.size());
@@ -508,14 +508,14 @@ void Controller::step_browser()
 void Controller::handle_request(const screens::Request &request)
 {
     using Kind = screens::Request::Kind;
-    spotify::Browser &browser = session_->browser();
+    service::Browser &browser = session_->browser();
     switch (request.kind)
     {
     case Kind::play:
         // A list of tracks given with the request (an artist's Popular).
         if (!request.play.tracks.empty())
         {
-            spotify::Resolved resolved;
+            service::Resolved resolved;
             resolved.context_uri = request.play.uri;
             resolved.tracks = request.play.tracks;
             rest_.clear();
@@ -527,8 +527,8 @@ void Controller::handle_request(const screens::Request &request)
         // From an open page: its track list is here already (start anywhere).
         else if (request.play.uri == page_.card.uri && !page_uris_.empty())
         {
-            spotify::Resolved resolved;
-            resolved.context_uri = spotify::home::playable_uri(page_.card.uri, session_->username());
+            service::Resolved resolved;
+            resolved.context_uri = service::home::playable_uri(page_.card.uri, session_->username());
             resolved.tracks = page_uris_;
             resolved.shuffle = request.play.shuffle;
             std::size_t start = static_cast<std::size_t>(std::max(0, request.play.index));

@@ -1,4 +1,4 @@
-// ps5-spotify - An artist: the landscape header, Popular, Albums, Singles.
+// spot5 - An artist: the landscape header, Popular, Albums, Singles.
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "screens/artist.hpp"
@@ -24,7 +24,6 @@ using namespace style;
 
 const Color kWhite = Color::rgb(0xffffff);
 const Color kBlack = Color::rgb(0x0b0d16);
-const Color kSpotifyGreen = Color::rgb(0x1ed760);
 
 // Content coordinates (before scrolling).
 constexpr float kBannerH = 860.0f;
@@ -359,8 +358,8 @@ class ArtistScreen final : public Screen
                  kNameBaseline + 52 + rise, 26, kWhite.with_alpha(0.82f));
         // Spotify's green Play, then Shuffle.
         const Rect play = action_rect(0);
-        list.glow(play, play.h * 0.5f, 22, kSpotifyGreen.with_alpha(0.35f));
-        list.rounded_rect(play, play.h * 0.5f, kSpotifyGreen);
+        list.glow(play, play.h * 0.5f, 22, kGreen.with_alpha(0.35f));
+        list.rounded_rect(play, play.h * 0.5f, kGreen);
         list.triangle({play.x + 38, play.cy() - 13, 24, 26}, kBlack, 0.0f, 1.5708f);
         ui::text(list, fonts.semibold, "Play", play.x + 80, play.cy() + 10, 28, kBlack);
         const Rect shuffle = action_rect(1);
@@ -380,7 +379,7 @@ class ArtistScreen final : public Screen
         list.push_opacity(in);
         ui::text(list, fonts.semibold, "Popular", kMargin, kPopularTop - 30, 30, kWhite);
         if (page.loading)
-            list.arc(kMargin + 20, kPopularTop + 40, 12, 3, clock_ * 5.5f, 2.2f, kSpotifyGreen);
+            list.arc(kMargin + 20, kPopularTop + 40, 12, 3, clock_ * 5.5f, 2.2f, kGreen);
         const std::string playing = model.queue && model.queue->playing >= 0 &&
                                             model.queue->playing < static_cast<int>(model.queue->tracks.size())
                                         ? model.queue->tracks[static_cast<std::size_t>(model.queue->playing)].uri
@@ -395,7 +394,7 @@ class ArtistScreen final : public Screen
                 {
                     const float level = model.paused ? 0.4f : 0.35f + 0.65f * std::fabs(std::sin(clock_ * (3.1f + b * 1.7f) + b));
                     list.rounded_rect({kMargin + 4 + static_cast<float>(b) * 8, cy + 12 - 24 * level, 5, 24 * level}, 1.5f,
-                                      kSpotifyGreen);
+                                      kGreen);
                 }
             else
                 ui::text(list, fonts.mono, std::to_string(i + 1), kMargin + 28, cy + 8, 22, kWhite.with_alpha(0.5f),
@@ -408,7 +407,7 @@ class ArtistScreen final : public Screen
                 list.rounded_rect(thumb, 8, kWhite.with_alpha(0.08f));
             const float width = kListW - 260;
             ui::text(list, fonts.semibold, fonts.semibold.font->fit(row.title, 25, width), thumb.x + 80, cy - 3, 25,
-                     now ? kSpotifyGreen : kWhite);
+                     now ? kGreen : kWhite);
             ui::text(list, fonts.regular, fonts.regular.font->fit(row.artists, 20, width), thumb.x + 80, cy + 24, 20,
                      kWhite.with_alpha(0.6f));
             if (row.duration_ms)

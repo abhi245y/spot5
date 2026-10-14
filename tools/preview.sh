@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ps5-spotify - Renders the app's screens on the PC (Mesa, no console, no GPU).
+# spot5 - Renders the app's screens on the PC (Mesa, no console, no GPU).
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
 # usage: tools/preview.sh [output dir]   (default build/preview)
@@ -18,7 +18,7 @@ ninja_begin "$build/build.ninja"
 
 # The UI only: the kit and the screens. Console code (cspot, audio output,
 # platform services, the app) is not part of the preview.
-sources=("$root/host/preview_main.cpp" "$root/host/platform_host.cpp" "$root/src/spotify/home.cpp" "$root/src/spotify/library.cpp")
+sources=("$root/host/preview_main.cpp" "$root/host/platform_host.cpp" "$root/src/service/home.cpp" "$root/src/service/library.cpp")
 while IFS= read -r -d '' source; do
     sources+=("$source")
 done < <(find "$root/src/gfx" "$root/src/ui" "$root/src/core" "$root/src/screens" \

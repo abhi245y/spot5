@@ -1,4 +1,4 @@
-// ps5-spotify - The Home page: Spotify's casita feed plus entity metadata.
+// spot5 - The Home page: Spotify's casita feed plus entity metadata.
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // How the phone builds Home (SPOTIFY_MOBILE_RESEARCH.md §13):
@@ -6,7 +6,7 @@
 //   2. POST extended-metadata (batched)   title/owner (trait 178) and cover
 //                                         images (trait 179) per URI
 // This file only parses and assembles (no network), so it is host-tested;
-// spotify/browser does the fetching.
+// service/browser does the fetching.
 
 #pragma once
 
@@ -18,7 +18,7 @@
 
 #include "screens/model.hpp"
 
-namespace spotify::home
+namespace service::home
 {
 
 constexpr int kTrackV4 = 10; // full spotify.metadata.Track
@@ -86,4 +86,4 @@ std::string to_json(const std::vector<Section> &sections, const Entities &entiti
 bool from_json(const std::string &text, std::vector<Section> &sections, Entities &entities,
                std::int64_t &fetched_ms);
 
-} // namespace spotify::home
+} // namespace service::home

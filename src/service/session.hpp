@@ -1,4 +1,4 @@
-// ps5-spotify - One logged-in Spotify Connect session (cspot + player).
+// spot5 - One logged-in Spotify Connect session (cspot + player).
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // Owns everything cspot needs for one login: context, Mercury session,
@@ -13,7 +13,7 @@
 
 #include "app/config.hpp"
 #include "audio/player.hpp"
-#include "spotify/browser.hpp"
+#include "service/browser.hpp"
 
 namespace cspot
 {
@@ -22,7 +22,7 @@ class LoginBlob;
 class SpircHandler;
 } // namespace cspot
 
-namespace spotify
+namespace service
 {
 
 class Session
@@ -96,4 +96,4 @@ class Session
     std::string device_name_;
 };
 
-} // namespace spotify
+} // namespace service

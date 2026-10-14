@@ -1,4 +1,4 @@
-// ps5-spotify - Spotify's text, made drawable with the app's fonts.
+// spot5 - Spotify's text, made drawable with the app's fonts.
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // The baked fonts have no typographic quotes, so titles and descriptions with
@@ -9,7 +9,7 @@
 
 #include <string>
 
-namespace spotify
+namespace service
 {
 
 inline std::string drawable(std::string text)
@@ -25,4 +25,4 @@ inline std::string drawable(std::string text)
     return text;
 }
 
-} // namespace spotify
+} // namespace service

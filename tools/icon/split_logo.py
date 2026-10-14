@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# ps5-spotify - Splits the Spot5 mark into the app's logo layers.
+# spot5 - Splits the Spot5 mark into the app's logo layers.
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
 # usage: split_logo.py <mark.png (transparent)> <out dir>

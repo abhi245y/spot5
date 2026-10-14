@@ -1,4 +1,4 @@
-// ps5-spotify - Home: connected, nothing playing yet.
+// spot5 - Home: connected, nothing playing yet.
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // ps5-homebrew-ui's "Aurora Shelf" hero (src/concepts/aurora.cpp): what to do

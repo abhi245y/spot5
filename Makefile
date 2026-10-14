@@ -1,4 +1,4 @@
-# ps5-spotify app. Build/packaging and UI kit from ps5-homebrew-ui
+# spot5 app. Build/packaging and UI kit from ps5-homebrew-ui
 # (GPL-3.0-or-later).
 #
 #   make            PS5 app folder in dist/

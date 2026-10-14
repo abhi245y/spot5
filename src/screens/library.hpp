@@ -1,4 +1,4 @@
-// ps5-spotify - Your Library: playlists, albums and artists as a card grid.
+// spot5 - Your Library: playlists, albums and artists as a card grid.
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // ps5-homebrew-ui's "Paper Library" (src/concepts/paper.cpp, GPL-3.0-or-later,

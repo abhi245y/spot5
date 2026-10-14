@@ -1,7 +1,7 @@
-// ps5-spotify - Fetches Home and resolves what to play, on its own thread.
+// spot5 - Fetches Home and resolves what to play, on its own thread.
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#include "spotify/browser.hpp"
+#include "service/browser.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -15,10 +15,10 @@
 #include "HTTPClient.h"
 #include "app/config.hpp"
 #include "nlohmann/json.hpp"
-#include "spotify/library.hpp"
+#include "service/library.hpp"
 #include "platform/ps5/system.hpp"
 
-namespace spotify
+namespace service
 {
 
 namespace
@@ -548,4 +548,4 @@ Resolved Browser::fetch_tracks(const screens::PlayRequest &request)
     return resolved;
 }
 
-} // namespace spotify
+} // namespace service

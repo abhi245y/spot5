@@ -1,4 +1,4 @@
-// ps5-spotify - Fetches Home and resolves what to play, on its own thread.
+// spot5 - Fetches Home and resolves what to play, on its own thread.
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // Web calls take seconds (one TLS connection each), so they never run on the
@@ -24,7 +24,7 @@
 #include <vector>
 
 #include "screens/model.hpp"
-#include "spotify/home.hpp"
+#include "service/home.hpp"
 
 namespace cspot
 {
@@ -32,7 +32,7 @@ struct Context;
 class AccessKeyFetcher;
 } // namespace cspot
 
-namespace spotify
+namespace service
 {
 
 // A track list ready for Session::play, or why there is none.
@@ -128,4 +128,4 @@ class Browser
     std::int64_t fetched_ms_ = 0;
 };
 
-} // namespace spotify
+} // namespace service

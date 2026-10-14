@@ -1,4 +1,4 @@
-// ps5-spotify - Now Playing: what the phone is playing on this console.
+// spot5 - Now Playing: what the phone is playing on this console.
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // ps5-homebrew-ui's "Now Playing" design (src/concepts/player.cpp) on live

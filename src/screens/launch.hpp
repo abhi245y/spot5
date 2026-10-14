@@ -1,4 +1,4 @@
-// ps5-spotify - Launch screen: title card and an honest loader.
+// spot5 - Launch screen: title card and an honest loader.
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // From ps5-homebrew-ui's "Launch Sequence" design (src/concepts/boot.cpp):

@@ -1,7 +1,7 @@
-// ps5-spotify - One logged-in Spotify Connect session (cspot + player).
+// spot5 - One logged-in Spotify Connect session (cspot + player).
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#include "spotify/session.hpp"
+#include "service/session.hpp"
 
 #include <algorithm>
 #include <exception>
@@ -13,7 +13,7 @@
 #include "TrackQueue.h"
 #include "platform/ps5/system.hpp"
 
-namespace spotify
+namespace service
 {
 
 std::shared_ptr<cspot::LoginBlob> Session::saved_login(const std::string &device_name)
@@ -211,4 +211,4 @@ bool Session::connected() const
     return ctx_->session->isConnected();
 }
 
-} // namespace spotify
+} // namespace service

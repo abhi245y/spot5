@@ -1,4 +1,4 @@
-// ps5-spotify - PC preview: renders the app's screens to PNG files.
+// spot5 - PC preview: renders the app's screens to PNG files.
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // usage: spt_preview <assets dir> <output dir>
@@ -27,8 +27,8 @@
 
 #include "core/save_file.hpp"
 #include "nlohmann/json.hpp"
-#include "spotify/home.hpp"
-#include "spotify/library.hpp"
+#include "service/home.hpp"
+#include "service/library.hpp"
 #include "gfx/canvas.hpp"
 #include "gfx/gl_program.hpp"
 #include "gfx/renderer.hpp"
@@ -136,16 +136,16 @@ std::shared_ptr<const screens::HomePage> load_home_fixture(const std::string &di
     std::string home;
     if (!save::read_file(dir + "/home.pb", &home))
         return nullptr;
-    spotify::home::Entities entities;
+    service::home::Entities entities;
     for (int i = 0;; ++i)
     {
         std::string traits;
         if (!save::read_file(dir + "/traits_" + std::to_string(i) + ".pb", &traits))
             break;
-        spotify::home::parse_traits(traits, entities, 1);
+        service::home::parse_traits(traits, entities, 1);
     }
     return std::make_shared<screens::HomePage>(
-        spotify::home::build_page(spotify::home::parse_home(home), entities));
+        service::home::build_page(service::home::parse_home(home), entities));
 }
 
 std::string cover_file(const std::string &url)
@@ -164,7 +164,7 @@ void load_rows_fixture(const std::string &dir)
         return;
     std::map<std::string, screens::TrackRow> known;
     if (save::read_file(dir + "/tracks.pb", &details))
-        spotify::home::parse_tracks(details, known);
+        service::home::parse_tracks(details, known);
     const auto json = nlohmann::json::parse(text, nullptr, false);
     if (json.is_discarded())
         return;
@@ -188,7 +188,7 @@ void load_library_fixture(const std::string &dir)
     {
         std::string text;
         if (save::read_file(dir + "/" + name, &text))
-            spotify::library::parse_library_page(text, library->items, total);
+            service::library::parse_library_page(text, library->items, total);
     }
     for (const char *kind : {"playlists", "albums"})
     {
@@ -221,7 +221,7 @@ void load_library_fixture(const std::string &dir)
         g_library = library;
     std::string text;
     auto artist = std::make_shared<screens::ArtistPage>();
-    if (save::read_file(dir + "/artist.json", &text) && spotify::library::parse_artist(text, *artist))
+    if (save::read_file(dir + "/artist.json", &text) && service::library::parse_artist(text, *artist))
         g_artist = artist;
 }
 

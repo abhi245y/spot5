@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# ps5-spotify - Builds bell's X509 root bundle (ESP-IDF crt bundle format) from
+# spot5 - Builds bell's X509 root bundle (ESP-IDF crt bundle format) from
 # a PEM root store, so bell verifies TLS certificates (X509Bundle::init).
 # SPDX-License-Identifier: GPL-3.0-or-later
 #

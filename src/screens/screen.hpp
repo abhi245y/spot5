@@ -1,4 +1,4 @@
-// ps5-spotify - One screen of the app, and the frame it draws into.
+// spot5 - One screen of the app, and the frame it draws into.
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // Same frame model as ps5-homebrew-ui's designs (app/concept.hpp), so the

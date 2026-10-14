@@ -1,7 +1,7 @@
-// ps5-spotify - Zeroconf pairing: the phone sends its login to the console.
+// spot5 - Zeroconf pairing: the phone sends its login to the console.
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#include "spotify/pairing.hpp"
+#include "service/pairing.hpp"
 
 #include <arpa/inet.h>
 #include <fcntl.h>
@@ -21,7 +21,7 @@
 #include "app/config.hpp"
 #include "platform/ps5/system.hpp"
 
-namespace spotify
+namespace service
 {
 
 namespace
@@ -226,4 +226,4 @@ std::shared_ptr<cspot::LoginBlob> Pairing::take_login(std::string &error)
     return blob_;
 }
 
-} // namespace spotify
+} // namespace service

@@ -1,4 +1,4 @@
-// ps5-spotify - What the screens show, and what they ask the app to do.
+// spot5 - What the screens show, and what they ask the app to do.
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // The only contract between the UI (src/screens, kit only: also builds on a

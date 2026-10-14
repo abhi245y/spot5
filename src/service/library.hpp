@@ -1,4 +1,4 @@
-// ps5-spotify - Your Library and artist pages from pathfinder's JSON.
+// spot5 - Your Library and artist pages from pathfinder's JSON.
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // pathfinder (api-partner.spotify.com/pathfinder/v1/query) is the GraphQL
@@ -6,7 +6,7 @@
 // a client-token and the web player's app-platform header (checked live,
 // SPOTIFY_MOBILE_RESEARCH.md §9). Persisted operations are named by hash.
 // This file only builds requests and parses replies (no network), so it is
-// host-tested; spotify/browser does the fetching.
+// host-tested; service/browser does the fetching.
 
 #pragma once
 
@@ -15,7 +15,7 @@
 
 #include "screens/model.hpp"
 
-namespace spotify::library
+namespace service::library
 {
 
 constexpr const char *kLibraryV3 = "390c78e5b951029bad359785e69b07b536a509c581cbcd0aded5e5067f187455";
@@ -42,4 +42,4 @@ std::string playable_uri(const std::string &uri, const std::string &username);
 std::string to_json(const screens::Library &library, long long fetched_ms);
 bool from_json(const std::string &text, screens::Library &library, long long &fetched_ms);
 
-} // namespace spotify::library
+} // namespace service::library

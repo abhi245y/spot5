@@ -1,4 +1,4 @@
-// ps5-spotify - mbedTLS entropy source: the kernel CSPRNG via sysctl.
+// spot5 - mbedTLS entropy source: the kernel CSPRNG via sysctl.
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // kern.arandom (KERN_ARND) is what the SDK's own arc4random uses. It lives in

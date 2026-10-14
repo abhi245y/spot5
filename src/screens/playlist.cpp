@@ -1,4 +1,4 @@
-// ps5-spotify - A playlist/album page: its cover, its story and every track.
+// spot5 - A playlist/album page: its cover, its story and every track.
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "screens/playlist.hpp"
@@ -24,7 +24,6 @@ using gfx::Rect;
 using namespace style;
 
 const Color kWhite = Color::rgb(0xffffff);
-const Color kSpotifyGreen = Color::rgb(0x1ed760);
 const Color kBlack = Color::rgb(0x0b0d16);
 
 const Rect kCover{kMargin, 150, 620, 620};
@@ -399,8 +398,8 @@ class Playlist final : public Screen
         list.push_opacity(in);
         // Spotify's green Play, then Shuffle.
         const Rect play = action_rect(0);
-        list.glow(play, play.h * 0.5f, 22, kSpotifyGreen.with_alpha(0.35f));
-        list.rounded_rect(play, play.h * 0.5f, kSpotifyGreen);
+        list.glow(play, play.h * 0.5f, 22, kGreen.with_alpha(0.35f));
+        list.rounded_rect(play, play.h * 0.5f, kGreen);
         list.triangle({play.x + 38, play.cy() - 13, 24, 26}, kBlack, 0.0f, 1.5708f);
         ui::text(list, fonts.semibold, "Play", play.x + 80, play.cy() + 10, 28, kBlack);
         const Rect shuffle = action_rect(1);
@@ -422,7 +421,7 @@ class Playlist final : public Screen
         {
             const float level = moving ? 0.35f + 0.65f * std::fabs(std::sin(clock_ * (3.1f + i * 1.7f) + i)) : 0.4f;
             const float h = 24.0f * level;
-            list.rounded_rect({x + static_cast<float>(i) * 8.0f, cy + 12 - h, 5, h}, 1.5f, kSpotifyGreen);
+            list.rounded_rect({x + static_cast<float>(i) * 8.0f, cy + 12 - h, 5, h}, 1.5f, kGreen);
         }
     }
 
@@ -459,7 +458,7 @@ class Playlist final : public Screen
             const float y = row_y(i);
             const float cy = y + (kRowH - 6) * 0.5f;
             const bool playing = i == playing_;
-            const Color title_colour = playing ? kSpotifyGreen : kWhite;
+            const Color title_colour = playing ? kGreen : kWhite;
             if (playing)
                 draw_equaliser(list, kColumnX + 4, cy, !model.paused);
             else

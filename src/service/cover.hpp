@@ -1,4 +1,4 @@
-// ps5-spotify - Downloads and decodes album covers off the main threads.
+// spot5 - Downloads and decodes album covers off the main threads.
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // Worker threads with a small queue: request(url) adds to it, and when it is
@@ -27,7 +27,7 @@
 
 #include "screens/style.hpp"
 
-namespace spotify
+namespace service
 {
 
 struct Cover
@@ -87,4 +87,4 @@ class CoverLoader
     bool stop_ = false;
 };
 
-} // namespace spotify
+} // namespace service

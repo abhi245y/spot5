@@ -1,4 +1,4 @@
-// ps5-spotify - Chooses the screen, moves between screens, owns the overlays.
+// spot5 - Chooses the screen, moves between screens, owns the overlays.
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 //   launch  --(ready, loader done)--> home                  iris

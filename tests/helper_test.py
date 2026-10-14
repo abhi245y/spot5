@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
-# ps5-spotify - Drives the pairing helper on the PC: the app side (control
+# spot5 - Drives the pairing helper on the PC: the app side (control
 # link) and a phone (HTTP). Build the helper for Linux first:
-#   mkdir -p /tmp/h/ps5 && printf "#include <stdio.h>
-#define klog_printf printf
-" > /tmp/h/ps5/klog.h
+#   mkdir -p /tmp/h/ps5 && printf '#include <stdio.h>\n#define klog_printf printf\n' > /tmp/h/ps5/klog.h
 #   M=../cspot/cspot/bell/external/mdnssvc
 #   gcc -w -I/tmp/h -I$M -D"sin_len=sin_zero[0]" -o /tmp/h/helper helper/mdns_helper.c $M/mdns.c $M/mdnsd.c -lpthread
 # then: python3 tests/helper_test.py /tmp/h/helper

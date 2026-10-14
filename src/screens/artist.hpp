@@ -1,4 +1,4 @@
-// ps5-spotify - An artist: the landscape header, Popular, Albums, Singles.
+// spot5 - An artist: the landscape header, Popular, Albums, Singles.
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // The artist's wide header image (Spotify's landscape banner, 1920x1080)

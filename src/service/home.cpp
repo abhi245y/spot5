@@ -1,13 +1,13 @@
-// ps5-spotify - The Home page: Spotify's casita feed plus entity metadata.
+// spot5 - The Home page: Spotify's casita feed plus entity metadata.
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#include "spotify/home.hpp"
+#include "service/home.hpp"
 
 #include "nlohmann/json.hpp"
-#include "spotify/protobuf.hpp"
-#include "spotify/text.hpp"
+#include "service/protobuf.hpp"
+#include "service/text.hpp"
 
-namespace spotify::home
+namespace service::home
 {
 
 namespace
@@ -343,4 +343,4 @@ bool from_json(const std::string &text, std::vector<Section> &sections, Entities
     return true;
 }
 
-} // namespace spotify::home
+} // namespace service::home

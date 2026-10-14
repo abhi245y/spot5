@@ -1,4 +1,4 @@
-// ps5-spotify - Control Room: the app's settings, opened with the touchpad.
+// spot5 - Control Room: the app's settings, opened with the touchpad.
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // Adapted from ps5-homebrew-ui src/concepts/settings.cpp (GPL-3.0-or-later,

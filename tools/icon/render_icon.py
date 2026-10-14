@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# ps5-spotify - Renders the Spot5 icon as glossy 3D shapes (height fields).
+# spot5 - Renders the Spot5 icon as glossy 3D shapes (height fields).
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
 # usage: render_icon.py <concept a|b|c> <out.png> [size] [--mark]

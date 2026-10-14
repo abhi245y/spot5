@@ -1,4 +1,4 @@
-// ps5-spotify - Zeroconf pairing: the phone sends its login to the console.
+// spot5 - Zeroconf pairing: the phone sends its login to the console.
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // While a Pairing exists, a helper payload (helper/mdns_helper.c; apps may not
@@ -25,7 +25,7 @@ namespace cspot
 class LoginBlob;
 } // namespace cspot
 
-namespace spotify
+namespace service
 {
 
 class Pairing
@@ -61,4 +61,4 @@ class Pairing
     bool lost_ = false;
 };
 
-} // namespace spotify
+} // namespace service

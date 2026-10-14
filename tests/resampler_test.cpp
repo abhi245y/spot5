@@ -1,4 +1,4 @@
-// ps5-spotify - Host check for src/audio/resampler.hpp.
+// spot5 - Host check for src/audio/resampler.hpp.
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Build/run: clang++ -std=c++17 -Isrc tests/resampler_test.cpp -o /tmp/rt && /tmp/rt
 #include <cassert>

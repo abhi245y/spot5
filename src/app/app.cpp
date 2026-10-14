@@ -1,4 +1,4 @@
-// ps5-spotify - The app: display, input and drawing on the main thread.
+// spot5 - The app: display, input and drawing on the main thread.
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "app/app.hpp"
@@ -29,8 +29,8 @@
 #include "platform/ps5/pad.hpp"
 #include "platform/ps5/system.hpp"
 #include "screens/shell.hpp"
-#include "spotify/cover.hpp"
-#include "spotify/home.hpp"
+#include "service/cover.hpp"
+#include "service/home.hpp"
 #include "third_party/stb/stb_image.h"
 #include "ui/fonts.hpp"
 
@@ -197,9 +197,9 @@ class Covers
     // Fills in the model's cover once it is loaded; asks for it otherwise.
     void apply(screens::Track &track)
     {
-        const std::string url = spotify::home::larger_cover(track.image_url);
+        const std::string url = service::home::larger_cover(track.image_url);
         loader_.request(url);
-        if (std::optional<spotify::Cover> cover = loader_.take())
+        if (std::optional<service::Cover> cover = loader_.take())
         {
             Entry e{cover->url,
                     renderer_.batch().create_texture(cover->width, cover->height, cover->rgba.data()),
@@ -230,7 +230,7 @@ class Covers
         screens::style::AlbumPalette palette;
     };
     gfx::Renderer &renderer_;
-    spotify::CoverLoader loader_{1, 1, paths::kCovers};
+    service::CoverLoader loader_{1, 1, paths::kCovers};
     std::deque<Entry> textures_;
 };
 
@@ -254,7 +254,7 @@ class CardArt
         // A few uploads per frame keep scrolling smooth.
         for (int i = 0; i < 4; ++i)
         {
-            std::optional<spotify::Cover> cover = loader_.take();
+            std::optional<service::Cover> cover = loader_.take();
             if (!cover)
                 break;
             Entry &entry = entries_[cover->url];
@@ -336,7 +336,7 @@ class CardArt
     // Long queue (the whole page at launch), six downloads at a time (each
     // is a new TLS connection, so more in flight is what makes it quick),
     // kept on disk for the next launch.
-    spotify::CoverLoader loader_{512, 6, paths::kCovers};
+    service::CoverLoader loader_{512, 6, paths::kCovers};
     std::unordered_map<std::string, Entry> entries_;
     std::uint64_t frame_ = 0;
     std::size_t bytes_ = 0;
@@ -456,7 +456,7 @@ void App::run()
             if (command == screens::Command::clear_cache)
             {
                 card_art.clear();
-                spotify::clear_cover_cache(paths::kCovers);
+                service::clear_cover_cache(paths::kCovers);
             }
             controller.send(command);
         }

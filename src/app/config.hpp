@@ -1,4 +1,4 @@
-// ps5-spotify - Where the app's files live, and its settings.
+// spot5 - Where the app's files live, and its settings.
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once

@@ -1,4 +1,4 @@
-// ps5-spotify - A playlist/album page: its cover, its story and every track.
+// spot5 - A playlist/album page: its cover, its story and every track.
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // Apple Music's (tvOS) layout: the cover on the left; title, owner line,

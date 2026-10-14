@@ -1,4 +1,4 @@
-// ps5-spotify - Now Playing: what plays on this console, and what comes next.
+// spot5 - Now Playing: what plays on this console, and what comes next.
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // Adapted from ps5-homebrew-ui src/concepts/player.cpp (GPL-3.0-or-later,

@@ -1,4 +1,4 @@
-// ps5-spotify - Spotify side of the app, on its own thread.
+// spot5 - Spotify side of the app, on its own thread.
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // Runs the connection state machine and makes every call into cspot, so cspot
@@ -31,8 +31,8 @@
 
 #include "audio/player.hpp"
 #include "screens/model.hpp"
-#include "spotify/pairing.hpp"
-#include "spotify/session.hpp"
+#include "service/pairing.hpp"
+#include "service/session.hpp"
 
 namespace app
 {
@@ -130,8 +130,8 @@ class Controller
     std::string title_of(const std::string &uri);
 
     // Controller thread only.
-    std::unique_ptr<spotify::Session> session_;
-    std::unique_ptr<spotify::Pairing> pairing_; // only in Pairing (and the login after it)
+    std::unique_ptr<service::Session> session_;
+    std::unique_ptr<service::Pairing> pairing_; // only in Pairing (and the login after it)
     std::int64_t reconnect_started_ms_ = 0;
     std::int64_t home_asked_ms_ = 0; // last refresh request, to keep calls rare
     std::int64_t artwork_since_ms_ = 0; // launch: when Step::artwork began

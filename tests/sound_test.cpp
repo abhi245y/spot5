@@ -1,4 +1,4 @@
-// ps5-spotify - Console sound test: can sceAudioOut play Spotify-format audio?
+// spot5 - Console sound test: can sceAudioOut play Spotify-format audio?
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // Three tests, each logged with raw return codes (stdout goes to the app log,

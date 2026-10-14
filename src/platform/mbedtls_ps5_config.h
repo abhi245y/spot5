@@ -1,4 +1,4 @@
-// ps5-spotify - mbedTLS settings for the PS5 (passed as MBEDTLS_USER_CONFIG_FILE).
+// spot5 - mbedTLS settings for the PS5 (passed as MBEDTLS_USER_CONFIG_FILE).
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // No /dev/urandom in a title's sandbox: entropy comes from

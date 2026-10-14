@@ -1,7 +1,7 @@
-// ps5-spotify - Downloads and decodes album covers off the main threads.
+// spot5 - Downloads and decodes album covers off the main threads.
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#include "spotify/cover.hpp"
+#include "service/cover.hpp"
 
 #include <dirent.h>
 #include <sys/stat.h>
@@ -21,7 +21,7 @@
 extern "C" std::size_t hui_heap_capacity(void); // runtime/app_heap.c
 extern "C" void hui_heap_stats(std::size_t *live, std::size_t *peak, std::size_t *blocks, std::size_t *failures);
 
-namespace spotify
+namespace service
 {
 
 namespace
@@ -398,4 +398,4 @@ void CoverLoader::run()
     }
 }
 
-} // namespace spotify
+} // namespace service

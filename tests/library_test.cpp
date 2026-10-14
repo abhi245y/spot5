@@ -1,16 +1,16 @@
-// ps5-spotify - Host check for spotify/library (libraryV3 + artist overview parsing).
+// spot5 - Host check for service/library (libraryV3 + artist overview parsing).
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Build/run: clang++ -std=c++20 -Isrc -I../cspot/cspot/bell/external/nlohmann_json/include \
-//   tests/library_test.cpp src/spotify/library.cpp -o /tmp/lt && /tmp/lt [tests/home-fixture]
+//   tests/library_test.cpp src/service/library.cpp -o /tmp/lt && /tmp/lt [tests/home-fixture]
 // With the fixture directory (real replies, kept out of git) it also parses those.
 #include <cassert>
 #include <cstdio>
 #include <fstream>
 #include <sstream>
 
-#include "spotify/library.hpp"
+#include "service/library.hpp"
 
-using namespace spotify;
+using namespace service;
 
 static std::string slurp(const std::string &path)
 {

@@ -1,4 +1,4 @@
-// ps5-spotify - Your Library: playlists, albums and artists as a card grid.
+// spot5 - Your Library: playlists, albums and artists as a card grid.
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "screens/library.hpp"
@@ -29,7 +29,6 @@ using namespace style;
 const Color kTable = Color::rgb(0x0b0b0d);
 const Color kSurface = Color::rgb(0x1c1c1f);
 const Color kSurfaceLift = Color::rgb(0x2a2a2e);
-const Color kSpotifyGreen = Color::rgb(0x1ed760);
 const Color kWhite = Color::rgb(0xffffff);
 const Color kBlack = Color::rgb(0x000000);
 const Color kText = Color::rgb(0xf4f4f6);
@@ -522,7 +521,7 @@ class LibraryScreen final : public Screen
                  focused ? kWhite : kText);
         ui::text(list, fonts.regular, fonts.regular.font->fit(item.card.subtitle, 19, room), text_x, base + 58, 19, kMuted);
         if (item.pinned)
-            list.rotated_rect({r.x + r.w - 30, r.y + r.w - 4, 12, 12}, 2, 0.785f, kSpotifyGreen);
+            list.rotated_rect({r.x + r.w - 30, r.y + r.w - 4, 12, 12}, 2, 0.785f, kGreen);
         list.pop_transform();
         list.pop_opacity();
     }
@@ -557,13 +556,13 @@ class LibraryScreen final : public Screen
         {
             const float breath = context_.settings.reduced_motion ? 0.5f : ui::breathe(clock_);
             list.glow(ring.inset(-kRingGap), radius + kRingGap, 26,
-                      kSpotifyGreen.with_alpha((0.28f + 0.18f * breath) * ring_alpha * landed));
+                      kGreen.with_alpha((0.28f + 0.18f * breath) * ring_alpha * landed));
         }
         if (const LibraryItem *item = focused_item())
             draw_card(list, *item, motion_.at(item->card.uri), true);
         if (ring_alpha > 0.01f)
             list.bordered_rect(ring.inset(-kRingGap), radius + kRingGap, Color::rgb(0, 0.0f), 4.0f,
-                               kSpotifyGreen.with_alpha(ring_alpha));
+                               kGreen.with_alpha(ring_alpha));
         list.pop_clip();
     }
 
@@ -603,7 +602,7 @@ class LibraryScreen final : public Screen
                            : filter_ == Filter::albums  ? "Albums you save on Spotify show up here."
                                                         : "Playlists you save on Spotify show up here.";
         if (model.library_loading)
-            list.arc(kCentreX, 520, 22, 4, clock_ * 5.5f, 2.2f, kSpotifyGreen);
+            list.arc(kCentreX, 520, 22, 4, clock_ * 5.5f, 2.2f, kGreen);
         ui::text(list, fonts.display, headline, kCentreX, 620, 44, kWhite, gfx::Align::center);
         ui::text(list, fonts.regular, line, kCentreX, 670, 26, kMuted, gfx::Align::center);
         list.pop_opacity();
@@ -626,12 +625,12 @@ class LibraryScreen final : public Screen
             const float w = ui::text(list, active ? fonts.semibold : fonts.regular, tabs[i], x, 92 - 10 * (1.0f - in), 26,
                                      kWhite.with_alpha(active ? 1.0f : 0.4f));
             if (active)
-                list.rounded_rect({x, 104, w, 4}, 2, kSpotifyGreen);
+                list.rounded_rect({x, 104, w, 4}, 2, kGreen);
             x += w + 44;
         }
         if (!model.username.empty())
         {
-            list.circle(1800, 82, 22, kSpotifyGreen);
+            list.circle(1800, 82, 22, kGreen);
             ui::text(list, fonts.semibold, ui::upper(model.username.substr(0, 1)), 1800, 91, 22, Color::rgb(0x0b0d16),
                      gfx::Align::center);
         }
@@ -651,7 +650,7 @@ class LibraryScreen final : public Screen
         ui::draw_button(list, fonts, glyphs, ui::Button::r2, last.x + last.w + 18, chip_cy, kShoulder);
         const Rect tab = chip_.value();
         list.shadow({tab.x, tab.y + 5, tab.w, tab.h}, kChipH * 0.5f, 12, kBlack.with_alpha(0.4f));
-        list.rounded_rect(tab, kChipH * 0.5f, kSpotifyGreen);
+        list.rounded_rect(tab, kChipH * 0.5f, kGreen);
         for (int i = 0; i < kFilters; ++i)
         {
             const Rect chip = chip_rect(i);

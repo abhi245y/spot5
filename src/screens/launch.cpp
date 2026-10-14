@@ -1,4 +1,4 @@
-// ps5-spotify - Launch screen: title card and an honest loader; with nothing
+// spot5 - Launch screen: title card and an honest loader; with nothing
 // saved, the loader makes way for how to pair the phone.
 // SPDX-License-Identifier: GPL-3.0-or-later
 //

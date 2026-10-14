@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ps5-spotify - Builds the static libraries the app links: mbedTLS and bell's
+# spot5 - Builds the static libraries the app links: mbedTLS and bell's
 # network layer, with the app's PS5 compiler wrapper.
 # SPDX-License-Identifier: GPL-3.0-or-later
 #

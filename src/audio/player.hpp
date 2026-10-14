@@ -1,4 +1,4 @@
-// ps5-spotify - Connects cspot's spirc/TrackPlayer to sceAudioOut.
+// spot5 - Connects cspot's spirc/TrackPlayer to sceAudioOut.
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // Same contract as cspot's targets/cli/CliPlayer: TrackPlayer pushes 44.1 kHz

@@ -1,4 +1,4 @@
-// ps5-spotify - Shared look: colours, the album palette, small helpers.
+// spot5 - Shared look: colours, the album palette, small helpers.
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once

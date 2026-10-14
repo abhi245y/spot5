@@ -163,7 +163,7 @@ for source in "${sources[@]}"; do
     mkdir -p "$(dirname "$object")"
     if [[ $source == *.c ]]; then standard=-std=c11; else standard=-std=c++20; fi
     args=("$standard" -O2 -Wall -Wextra -ffunction-sections -fdata-sections)
-    # ps5-spotify: C++ is built with exceptions and RTTI (bell and cspot throw;
+    # spot5: C++ is built with exceptions and RTTI (bell and cspot throw;
     # the exception probe proved unwinding works on the console).
     [[ $source == *.c ]] || args+=(-fexceptions -frtti)
     # Vendored upstream code is built as published; its warnings are not ours to fix.
@@ -251,7 +251,7 @@ ninja_edge LINK "$build/llvm-pie.elf" "$sdk_root/bin/prospero-lld" \
     -e _start -o "$build/llvm-pie.elf" "${link_inputs[@]}" \
     --as-needed "${stub_paths[@]}" "$sdk_root"/target/lib/*.so \
     "$sdk_root/target/lib/libc.a"
-# ps5-spotify: the SDK's libc.a comes after the system stubs so it only fills
+# spot5: the SDK's libc.a comes after the system stubs so it only fills
 # what they lack (libc++ locale functions); placed earlier, its mmap/mprotect
 # replaced libkernel's and needed a payload-only kernel helper.
 ninja_inputs=("$build/llvm-pie.elf" "$tool" "${stub_paths[@]}" "$sdk_root"/target/lib/*.so)
@@ -273,7 +273,7 @@ for asset in icon0.png pic0.dds pic1.dds snd0.at9; do
     [[ -f $root/sce_sys/$asset ]] && cp "$root/sce_sys/$asset" "$app/sce_sys/$asset"
 done
 [[ ! -d $root/assets ]] || cp -a "$root/assets" "$app/assets"
-# ps5-spotify: the mDNS helper payload the app hands to elfldr while pairing.
+# spot5: the mDNS helper payload the app hands to elfldr while pairing.
 [[ ! -f $build/mdns-helper.elf ]] || cp "$build/mdns-helper.elf" "$app/assets/"
 # Directory listing returns nothing under /app0 on the console, so each
 # audio folder carries an index of its files (read by save::list_files).

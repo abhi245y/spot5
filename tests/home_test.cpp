@@ -1,7 +1,7 @@
-// ps5-spotify - Host check for spotify/home (casita + traits parsing, cache).
+// spot5 - Host check for service/home (casita + traits parsing, cache).
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Build/run: clang++ -std=c++20 -Isrc -I../cspot/cspot/bell/external/nlohmann_json/include \
-//   tests/home_test.cpp src/spotify/home.cpp -o /tmp/ht && /tmp/ht [home.pb traits.pb]
+//   tests/home_test.cpp src/service/home.cpp -o /tmp/ht && /tmp/ht [home.pb traits.pb]
 // With the two optional files (real replies, kept out of git) it also prints
 // the page they make.
 #include <cassert>
@@ -9,10 +9,10 @@
 #include <fstream>
 #include <sstream>
 
-#include "spotify/home.hpp"
-#include "spotify/protobuf.hpp"
+#include "service/home.hpp"
+#include "service/protobuf.hpp"
 
-using namespace spotify;
+using namespace service;
 
 namespace
 {

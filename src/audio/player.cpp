@@ -1,4 +1,4 @@
-// ps5-spotify - Connects cspot's spirc/TrackPlayer to sceAudioOut.
+// spot5 - Connects cspot's spirc/TrackPlayer to sceAudioOut.
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "audio/player.hpp"

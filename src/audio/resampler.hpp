@@ -1,4 +1,4 @@
-// ps5-spotify - Streaming stereo S16 resampler (Spotify 44.1 kHz -> PS5 48 kHz).
+// spot5 - Streaming stereo S16 resampler (Spotify 44.1 kHz -> PS5 48 kHz).
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // sceAudioOut only opens at 48 kHz (44.1 kHz is refused with 0x80260008).

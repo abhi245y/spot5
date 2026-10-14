@@ -1,14 +1,14 @@
-// ps5-spotify - Your Library and artist pages from pathfinder's JSON.
+// spot5 - Your Library and artist pages from pathfinder's JSON.
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#include "spotify/library.hpp"
+#include "service/library.hpp"
 
 #include <cstdlib>
 
 #include "nlohmann/json.hpp"
-#include "spotify/text.hpp"
+#include "service/text.hpp"
 
-namespace spotify::library
+namespace service::library
 {
 
 namespace
@@ -357,4 +357,4 @@ bool from_json(const std::string &text, screens::Library &library, long long &fe
     return true;
 }
 
-} // namespace spotify::library
+} // namespace service::library

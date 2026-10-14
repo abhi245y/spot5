@@ -1,4 +1,4 @@
-// ps5-spotify - Probe: do C++ exceptions work in this native-app runtime?
+// spot5 - Probe: do C++ exceptions work in this native-app runtime?
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // Built with -fexceptions -frtti (tools/build.sh, src/exceptions/), because

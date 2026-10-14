@@ -1,4 +1,4 @@
-// ps5-spotify - Pairing helper payload: advertises the app and answers the phone.
+// spot5 - Pairing helper payload: advertises the app and answers the phone.
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // Apps may not bind UDP 5353, and a media app may not listen on any port
@@ -273,7 +273,7 @@ int main(void)
         return 1;
     }
     // Own host name, so it never clashes with the console's own responder.
-    mdnsd_set_hostname(responder, "ps5-spotify.local", host);
+    mdnsd_set_hostname(responder, "spot5.local", host);
     const char *txt[] = {"VERSION=1.0", "CPath=/spotify_info", "Stack=SP", NULL};
     struct mdns_service *service =
         mdnsd_register_svc(responder, name, "_spotify-connect._tcp.local", HTTP_PORT, NULL, txt);

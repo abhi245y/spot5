@@ -1,4 +1,4 @@
-// ps5-spotify - Reads and writes protobuf wire format without generated code.
+// spot5 - Reads and writes protobuf wire format without generated code.
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // Home's protobufs (casita, extended-metadata traits) have no .proto files in
@@ -12,7 +12,7 @@
 #include <string>
 #include <string_view>
 
-namespace spotify::pb
+namespace service::pb
 {
 
 struct Field
@@ -141,4 +141,4 @@ inline void put_bytes_field(std::string &out, std::uint32_t number, std::string_
     out.append(value);
 }
 
-} // namespace spotify::pb
+} // namespace service::pb

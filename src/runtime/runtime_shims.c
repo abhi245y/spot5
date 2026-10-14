@@ -1,4 +1,4 @@
-// ps5-spotify - Process-level runtime shims for the OpenGL runtime.
+// spot5 - Process-level runtime shims for the OpenGL runtime.
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // From ps5-homebrew-ui src/runtime/runtime_shims.c (Copyright (C) 2026

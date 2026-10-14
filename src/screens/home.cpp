@@ -1,4 +1,4 @@
-// ps5-spotify - Home: your personalised Spotify Home, as shelves of covers.
+// spot5 - Home: your personalised Spotify Home, as shelves of covers.
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // ps5-homebrew-ui's "Aurora Shelf" (src/concepts/aurora.cpp, GPL-3.0-or-later,

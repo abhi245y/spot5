@@ -1,4 +1,4 @@
-// ps5-spotify - Host check for style::palette_from_pixels.
+// spot5 - Host check for style::palette_from_pixels.
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Build/run: clang++ -std=c++20 -Isrc tests/palette_test.cpp -o /tmp/pt && /tmp/pt
 #include <cassert>
