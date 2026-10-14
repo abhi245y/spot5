@@ -71,6 +71,7 @@ class Shell
     bool playing_open_ = false; // Triangle on Home or a page opens Now Playing; Circle closes it
     bool library_tab_ = false;  // L1 / R1 between Home and Library
     std::vector<Id> stack_;     // pages opened over the tab (page / artist), newest last
+    float back_held_ = -1.0f;   // seconds Circle has been down on a page; -1 when up or used
     Id current_ = Id::launch;
     Id previous_ = Id::launch;
     Move move_ = Move::none;

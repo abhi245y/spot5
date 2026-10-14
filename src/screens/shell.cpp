@@ -27,6 +27,7 @@ namespace screens
 // The touchpad: released within kTapSeconds it is a tap; held kQuitSeconds, it quits.
 constexpr float kTapSeconds = 0.3f;
 constexpr float kQuitSeconds = 3.0f;
+constexpr float kHomeHoldSeconds = 0.6f; // Circle held on a page: all the way Home
 constexpr float kDrainSeconds = 0.45f; // a released ring empties this fast
 
 namespace
@@ -132,10 +133,30 @@ void Shell::update(const Model &model, const InputFrame &input, float dt, ui::Fe
         feedback.play(audio::Cue::back);
     }
     else if (!menu_open_ && (current_ == Id::page || current_ == Id::artist) && !stack_.empty() &&
-             input.is_pressed(Action::back))
+             (back_held_ >= 0.0f || input.is_pressed(Action::back)))
     {
-        stack_.pop_back();
-        feedback.play(audio::Cue::back);
+        // On a page Circle is Back when tapped, Home when held: so it acts
+        // on release, or once it has been down long enough.
+        back_held_ = input.is_pressed(Action::back) ? 0.0f : back_held_ + dt;
+        Request request;
+        if (back_held_ >= kHomeHoldSeconds)
+        {
+            stack_.clear();
+            library_tab_ = false;
+            request.kind = Request::Kind::home;
+            back_held_ = -1.0f;
+            feedback.play(audio::Cue::back, 0.85f);
+            feedback.rumble(0.45f, 0.12f);
+            context_.requests.push_back(request);
+        }
+        else if (!input.is_held(Action::back))
+        {
+            stack_.pop_back();
+            request.kind = Request::Kind::back;
+            back_held_ = -1.0f;
+            feedback.play(audio::Cue::back);
+            context_.requests.push_back(request);
+        }
     }
     else if (!menu_open_ && (current_ == Id::home || current_ == Id::library) && stack_.empty() &&
              (input.is_pressed(Action::page_prev) || input.is_pressed(Action::page_next)))
@@ -143,6 +164,8 @@ void Shell::update(const Model &model, const InputFrame &input, float dt, ui::Fe
         library_tab_ = !library_tab_;
         feedback.play(audio::Cue::tab, library_tab_ ? 1.06f : 0.96f);
     }
+    if ((current_ != Id::page && current_ != Id::artist) || picking || menu_open_)
+        back_held_ = -1.0f;
     if (!model.has_track)
         playing_open_ = false;
 
@@ -229,8 +252,11 @@ void Shell::update(const Model &model, const InputFrame &input, float dt, ui::Fe
             if (request.kind == Request::Kind::open)
             {
                 const Id next = request.card.uri.rfind("spotify:artist:", 0) == 0 ? Id::artist : Id::page;
-                if (stack_.empty() || stack_.back() != next)
-                    stack_.push_back(next);
+                // Every open stacks (a page over a page too): the
+                // controller keeps one visit per entry for Back.
+                stack_.push_back(next);
+                if (stack_.size() > kPageHistory)
+                    stack_.erase(stack_.begin());
                 playing_open_ = false;
             }
         if (current_ == Id::menu && control_room_wants_close(*menu_))

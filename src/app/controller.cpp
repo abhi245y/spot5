@@ -593,6 +593,24 @@ void Controller::handle_request(const screens::Request &request)
         }
         break;
     case Kind::open:
+    {
+        // Keep what this page replaces, for Back.
+        Visit visit;
+        visit.artist = request.card.uri.rfind("spotify:artist:", 0) == 0;
+        if (visit.artist)
+        {
+            visit.artist_uri = artist_uri_;
+            std::scoped_lock guard(lock_);
+            visit.artist_page = status_.artist;
+        }
+        else
+        {
+            visit.page = page_;
+            visit.uris = page_uris_;
+        }
+        visits_.push_back(std::move(visit));
+        if (visits_.size() > screens::kPageHistory)
+            visits_.erase(visits_.begin());
         if (request.card.uri.rfind("spotify:artist:", 0) == 0)
         {
             auto loading = std::make_shared<screens::ArtistPage>();
@@ -612,6 +630,29 @@ void Controller::handle_request(const screens::Request &request)
         publish_page();
         browser.open(request.card.uri);
         set_busy("Loading " + request.card.title, Until::page_loaded);
+        break;
+    }
+    case Kind::back:
+        if (!visits_.empty())
+        {
+            Visit visit = std::move(visits_.back());
+            visits_.pop_back();
+            if (visit.artist)
+            {
+                artist_uri_ = visit.artist_uri;
+                std::scoped_lock guard(lock_);
+                status_.artist = std::move(visit.artist_page);
+            }
+            else
+            {
+                page_ = std::move(visit.page);
+                page_uris_ = std::move(visit.uris);
+                publish_page();
+            }
+        }
+        break;
+    case Kind::home:
+        visits_.clear();
         break;
     case Kind::describe:
     {

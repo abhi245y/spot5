@@ -158,6 +158,9 @@ struct PlayRequest
     bool radio = false;              // uri is a track: play its song radio
 };
 
+// Pages kept for Back (the shell's stack and the controller's visits agree).
+constexpr std::size_t kPageHistory = 12;
+
 // What a screen asks the app for (Context::requests), besides Commands.
 struct Request
 {
@@ -168,6 +171,8 @@ struct Request
         describe, // fetch details for uris (rows on screen without a title)
         seek,     // seek the playing track to ms
         jump,     // play queue track `index` (absolute, Queue::first + row)
+        back,     // the page on top closed: show the one under it again
+        home,     // every page closed
     };
     Kind kind = Kind::play;
     PlayRequest play;
