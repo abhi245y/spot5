@@ -7,6 +7,7 @@
 #include <sys/stat.h>
 
 #include <algorithm>
+#include <memory>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -244,7 +245,14 @@ void CoverLoader::finished(const std::string &url)
 
 // The cover's bytes: from the cache if there, else downloaded (and cached).
 // Empty if the download failed.
-std::vector<std::uint8_t> CoverLoader::fetch(const std::string &url)
+void CoverLoader::take_download_stats(int &count, long long &total_ms, int &connections)
+{
+    count = downloads_.exchange(0, std::memory_order_relaxed);
+    total_ms = download_ms_.exchange(0, std::memory_order_relaxed);
+    connections = connections_.exchange(0, std::memory_order_relaxed);
+}
+
+std::vector<std::uint8_t> CoverLoader::fetch(const std::string &url, Connection &connection)
 {
     const std::string path = cache_dir_.empty() ? std::string() : cache_dir_ + "/" + cache_name(url);
     if (!path.empty())
@@ -254,18 +262,40 @@ std::vector<std::uint8_t> CoverLoader::fetch(const std::string &url)
             return {cached.begin(), cached.end()};
     }
     std::vector<std::uint8_t> bytes;
+    // The worker's kept-alive connection to this cover's host, reused for every
+    // cover from it: a new TLS handshake per 30 KB cover was most of the time.
+    const std::string host = url.substr(0, url.find('/', url.find("://") + 3));
     try
     {
-        auto response = bell::HTTPClient::get(url);
-        bytes = response->bytes();
-        if (response->statusCode() != 200)
+        std::unique_ptr<bell::HTTPClient::Response> &slot = connection.by_host[host];
+        const bool fresh = !slot;
+        if (fresh)
         {
-            hui::sys::log("[APP] cover HTTP %d: %s", response->statusCode(), url.c_str());
+            slot = std::make_unique<bell::HTTPClient::Response>();
+            slot->connect(url);
+        }
+        bell::HTTPClient::Response &response = *slot;
+        const int opened_before = response.openCount();
+        const long long started = now_ms();
+        response.get(url);
+        bytes = response.bytes();
+        // Opens during this request (a dropped keep-alive reconnects), plus
+        // the one connect() just made for a new connection.
+        connections_.fetch_add(response.openCount() - opened_before + (fresh ? 1 : 0), std::memory_order_relaxed);
+        downloads_.fetch_add(1, std::memory_order_relaxed);
+        download_ms_.fetch_add(now_ms() - started, std::memory_order_relaxed);
+        const int status = response.statusCode();
+        if (!response.hasContentLength())
+            slot.reset(); // the body's end is unknown: no further request on it
+        if (status != 200)
+        {
+            hui::sys::log("[APP] cover HTTP %d: %s", status, url.c_str());
             return {};
         }
     }
     catch (const std::exception &e)
     {
+        connection.by_host.erase(host); // start the next cover from this host on a fresh connection
         hui::sys::log("[APP] cover download failed: %s", e.what());
         return {};
     }
@@ -297,6 +327,7 @@ void CoverLoader::save(const std::string &url, const std::vector<std::uint8_t> &
 
 void CoverLoader::run()
 {
+    Connection connection; // this worker's own, kept alive between covers
     for (;;)
     {
         std::string url;
@@ -312,7 +343,7 @@ void CoverLoader::run()
             in_flight_.push_back(url);
         }
 
-        std::vector<std::uint8_t> bytes = fetch(url);
+        std::vector<std::uint8_t> bytes = fetch(url, connection);
         // A big image (over a megapixel) that does not fit in memory now: an
         // original-size album cover becomes the 640 px one (cached under the
         // asked-for name, so this happens once); anything else waits.
@@ -330,7 +361,7 @@ void CoverLoader::run()
             {
                 std::string smaller = url;
                 smaller.replace(at, 16, "ab67616d0000b273");
-                bytes = fetch(smaller);
+                bytes = fetch(smaller, connection);
                 save(url, bytes);
             }
             else

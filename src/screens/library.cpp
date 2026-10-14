@@ -526,8 +526,20 @@ class LibraryScreen final : public Screen
         list.pop_opacity();
     }
 
+    // The covers of the two rows below the view start loading before they
+    // scroll in.
+    void prefetch() const
+    {
+        const int first_row = std::max(0, static_cast<int>(scroll_.offset() / kRowPitch));
+        const int end_row = first_row + static_cast<int>(kGridView / kRowPitch) + 3;
+        const int end = std::min(static_cast<int>(visible_.size()), end_row * kColumns);
+        for (int slot = first_row * kColumns; slot < end; ++slot)
+            cover(items()[static_cast<std::size_t>(visible_[static_cast<std::size_t>(slot)])].card.image);
+    }
+
     void draw_grid(gfx::DrawList &list) const
     {
+        prefetch();
         const std::string focused = focused_uri();
         list.push_clip({0, kGridTop, gfx::kVirtualWidth, kGridView});
         // Leaving cards lowest, then the shelf in order, then the focus.

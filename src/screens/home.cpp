@@ -123,8 +123,10 @@ class Home final : public Screen
             previous_ = shown_;
             shown_ = {*focused, shelves()[static_cast<std::size_t>(row_)].title};
             hero_.start(context_.settings.reduced_motion ? 0.12f : 0.42f);
+            focus_still_ = 0.0f;
         }
         hero_.update(dt);
+        focus_still_ += dt;
         apply_palette();
         for (ui::SpringColor &colour : palette_)
             colour.update(dt, 4.0f);
@@ -162,6 +164,7 @@ class Home final : public Screen
         {
             draw_hero(list); // a wide banner sits under the top bar
             draw_shelves(list);
+            prefetch();
         }
         draw_top_bar(list, model);
         // A soft scrim under the bottom row: the shelf peeking in below stays
@@ -534,6 +537,33 @@ class Home final : public Screen
                  r.cy() + 8, 23, kWhite.with_alpha(alpha));
     }
 
+    // Covers about to come into view start loading before they get there:
+    // the next two shelves, a screen further along the focused one, and,
+    // once the focus rests, the banners of the cards beside it.
+    void prefetch() const
+    {
+        const int last = std::min(row_ + 2, static_cast<int>(shelves().size()) - 1);
+        for (int r = std::max(row_, 0); r <= last; ++r)
+        {
+            const Shelf &shelf = shelves()[static_cast<std::size_t>(r)];
+            for (int c = 0; c < static_cast<int>(shelf.cards.size()); ++c)
+                if (item_rect(r, c).x < 2.0f * gfx::kVirtualWidth)
+                    art(shelf.cards[static_cast<std::size_t>(c)].image);
+        }
+        // Banners only once the focus rests: scrolling fast along a shelf would
+        // otherwise decode a big banner for every card passed.
+        if (focus_still_ < 0.4f || is_grid(row_) || row_ < 0 || row_ >= static_cast<int>(shelves().size()))
+            return;
+        const Shelf &shelf = shelves()[static_cast<std::size_t>(row_)];
+        const int index = rows_[static_cast<std::size_t>(row_)].index;
+        for (int c : {index - 1, index + 1})
+            if (c >= 0 && c < static_cast<int>(shelf.cards.size()))
+            {
+                const Card &card = shelf.cards[static_cast<std::size_t>(c)];
+                art(!card.wide.empty() ? card.wide : card.image_large);
+            }
+    }
+
     void draw_shelves(gfx::DrawList &list) const
     {
         const ui::Fonts &fonts = context_.fonts;
@@ -648,6 +678,7 @@ class Home final : public Screen
     Hero shown_;         // the card the hero shows
     Hero previous_;      // ... and the one it is fading out
     tween::Timer hero_;
+    float focus_still_ = 0.0f; // seconds since the focus last moved
     ui::SpringColor palette_[4];
     tween::Spring row_position_;
     ui::SpringRect ring_;

@@ -18,6 +18,7 @@ void HTTPClient::Response::connect(const std::string& url) {
   // Open socket of type
   this->socketStream.open(urlParser.host, urlParser.port,
                           urlParser.schema == "https");
+  ++opens;
 }
 
 HTTPClient::Response::~Response() {
@@ -31,6 +32,12 @@ void HTTPClient::Response::rawRequest(const std::string& url,
                                       const std::vector<uint8_t>& content,
                                       Headers& headers) {
   urlParser = bell::URLParser::parse(url);
+  // A Response reused for another request on its keep-alive connection must
+  // not hand back the previous body or length
+  rawBody.clear();
+  contentSize = 0;
+  hasContentSize = false;
+  status = 0;
 
   // Prepare a request
   const char* reqEnd = "\r\n";
@@ -44,6 +51,7 @@ void HTTPClient::Response::rawRequest(const std::string& url,
       socketStream.clear();
       socketStream.open(urlParser.host, urlParser.port,
                         urlParser.schema == "https");
+      ++opens;
       if (!socketStream.good()) {
         throw std::runtime_error("Cannot connect to " + urlParser.host);
       }

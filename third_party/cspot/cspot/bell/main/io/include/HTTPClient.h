@@ -69,6 +69,12 @@ class HTTPClient {
     bell::SocketStream& stream() { return this->socketStream; }
 
     size_t contentLength();
+    // False when the reply had no Content-Length (its body length unknown, so
+    // the connection cannot carry another request)
+    bool hasContentLength() const { return hasContentSize; }
+    // Connections opened so far (connect() plus reconnects of a dropped
+    // keep-alive socket)
+    int openCount() const { return opens; }
     size_t totalLength();
 
    private:
@@ -83,6 +89,7 @@ class HTTPClient {
     size_t httpBufferAvailable;
 
     int status = 0;
+    int opens = 0;
     size_t contentSize = 0;
     bool hasContentSize = false;
 
