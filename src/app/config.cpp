@@ -61,6 +61,7 @@ screens::Settings load_settings()
     settings.timezone = json.value("timezone", settings.timezone);
     if (settings.timezone.size() > 64)
         settings.timezone.clear(); // not a zone name: back to Automatic
+    settings.song_menu = std::clamp(json.value("song_menu", settings.song_menu), 0, 1);
     return settings;
 }
 
@@ -72,7 +73,8 @@ bool save_settings(const screens::Settings &settings)
                                  {"device_name", settings.device_name},
                                  {"reduced_motion", settings.reduced_motion},
                                  {"resolution", settings.resolution},
-                                 {"timezone", settings.timezone}};
+                                 {"timezone", settings.timezone},
+                                 {"song_menu", settings.song_menu}};
     const std::string temporary = paths::kSettings + ".tmp";
     return write_file(temporary, json.dump(2)) &&
            std::rename(temporary.c_str(), paths::kSettings.c_str()) == 0;

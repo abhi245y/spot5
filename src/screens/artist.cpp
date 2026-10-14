@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <map>
 
 #include "core/tween.hpp"
 #include "screens/style.hpp"
@@ -77,16 +78,29 @@ class ArtistScreen final : public Screen
             return;
         if (page->card.uri != uri_)
         {
+            // A new artist starts at Play; one returned to (Back) where it was left.
+            if (!uri_.empty())
+            {
+                if (left_.size() > 32)
+                    left_.clear();
+                left_[uri_] = {zone_, {index_[0], index_[1], index_[2], index_[3]}};
+            }
             uri_ = page->card.uri;
-            zone_ = Zone::actions;
-            index_[0] = index_[1] = index_[2] = index_[3] = 0;
-            scroll_.snap(0.0f);
+            const auto was = left_.find(uri_);
+            const Spot spot = was != left_.end() ? was->second : Spot{};
+            zone_ = spot.zone;
+            std::copy(std::begin(spot.index), std::end(spot.index), index_);
+            scroll_.snap(std::max(0.0f, zone_top(zone_) - 380.0f));
             for (ui::Scroller &shelf : shelves_)
                 shelf.position.snap(0.0f);
         }
         navigate(*page, input, feedback);
         if (input.is_pressed(Action::confirm))
             activate(*page, feedback);
+        if (zone_ == Zone::popular && index_[1] < static_cast<int>(page->top.size()) &&
+            input.is_pressed(Action::menu))
+            context_.song_pick =
+                Context::SongPick{page->top[static_cast<std::size_t>(index_[1])], focus_rect(*page)};
 
         // ---- animation ----
         scroll_.target = std::max(0.0f, zone_top(zone_) - 380.0f);
@@ -478,6 +492,8 @@ class ArtistScreen final : public Screen
     void draw_hints(gfx::DrawList &list, const Model &model, const ArtistPage &) const
     {
         style::hint_fade(list); // content scrolled down there fades out before the hints
+        if (context_.song_menu_open)
+            return;
         list.push_opacity(tween::stagger(age_, 5, 0.08f, 0.5f));
         const char *cross = zone_ == Zone::actions   ? (index_[0] == 1 ? "Shuffle" : "Play")
                             : zone_ == Zone::popular ? "Play from here"
@@ -485,15 +501,24 @@ class ArtistScreen final : public Screen
         ui::Hint hints[4];
         int count = 0;
         hints[count++] = {ui::Button::cross, cross};
-        hints[count++] = {ui::Button::circle, "Back"};
+        if (zone_ == Zone::popular)
+            hints[count++] = {ui::Button::options, "More"};
+        hints[count++] = {ui::Button::circle, "Back \xC2\xB7 Hold: Home"};
         if (model.has_track)
             hints[count++] = {ui::Button::triangle, "Now Playing"};
         ui::draw_hints(list, context_.fonts, style::hint_style(), hints, count, kRight, true, style::hint_layout());
         list.pop_opacity();
     }
 
+    struct Spot
+    {
+        Zone zone = Zone::actions;
+        int index[4] = {0, 0, 0, 0};
+    };
+
     Context &context_;
     std::string uri_;
+    std::map<std::string, Spot> left_; // where the focus was on artists left behind
     Zone zone_ = Zone::actions;
     int index_[4] = {0, 0, 0, 0}; // per zone: action, popular row, album, single
     float age_ = 0.0f;

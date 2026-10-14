@@ -18,6 +18,7 @@
 
 #include "core/tween.hpp"
 #include "screens/screen.hpp"
+#include "screens/song_menu.hpp"
 #include "ui/motion.hpp"
 
 namespace hui::gfx
@@ -66,9 +67,11 @@ class Shell
     Context &context_;
     std::unique_ptr<Screen> launch_, home_, playing_, menu_, page_, library_, artist_;
     bool menu_open_ = false;
+    SongMenu song_menu_; // Options on a song, over any screen
     bool playing_open_ = false; // Triangle on Home or a page opens Now Playing; Circle closes it
     bool library_tab_ = false;  // L1 / R1 between Home and Library
     std::vector<Id> stack_;     // pages opened over the tab (page / artist), newest last
+    float back_held_ = -1.0f;   // seconds Circle has been down on a page; -1 when up or used
     Id current_ = Id::launch;
     Id previous_ = Id::launch;
     Move move_ = Move::none;

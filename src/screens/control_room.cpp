@@ -91,6 +91,7 @@ enum class Field : std::uint8_t
     reduce_motion,
     resolution,
     timezone,
+    song_menu,
     clear_cache,
     reset,
     quit,
@@ -149,6 +150,8 @@ constexpr Row kDisplayRows[] = {
      Kind::stepper, Field::resolution},
     {"Reduce motion", "Replaces slides, zooms and overshoot with short fades.", Kind::toggle,
      Field::reduce_motion},
+    {"Song menu", "How Options on a song opens its menu: a panel from the right edge, or a pop-up at the song.",
+     Kind::stepper, Field::song_menu},
 };
 constexpr Row kAboutRows[] = {
     {"Clear cache", "Deletes saved covers, Home and Library; they download again as you browse.",
@@ -167,7 +170,7 @@ constexpr Category kCategories[] = {
     {"Playback", "Sound quality and how loud this console plays.", kPlaybackRows, 3},
     {"Device", "How this console shows up in Spotify, and its local time.", kDeviceRows, 2},
     {"Account", "Who is signed in, and how to forget it.", kAccountRows, 2},
-    {"Display", "How sharp and how calm the interface is.", kDisplayRows, 2},
+    {"Display", "How sharp and how calm the interface is, and how menus open.", kDisplayRows, 3},
     {"About", "What this app is built from, its saved data, and the way back to its defaults.", kAboutRows, 2},
     {"Quit", "Close the app.", kQuitRows, 1},
 };
@@ -175,12 +178,13 @@ constexpr int kCategoryCount = 6;
 
 constexpr const char *kQualities[] = {"96 kbps", "160 kbps", "320 kbps"};
 constexpr const char *kResolutions[] = {"1080p", "1440p", "4K"};
+constexpr const char *kSongMenus[] = {"Side panel", "Pop-up"};
 constexpr const char *kQualityNames[] = {"Normal", "High", "Very high"};
 constexpr const char *kMotionNotes[] = {
-    "Screens and panels fade instead of sliding",
-    "The backdrops and the idle glows hold still",
-    "Switches and dialogs settle without overshoot",
-    "Sounds and the focus highlight work exactly as before",
+    "Screens fade instead of sliding",
+    "Backdrops and glows hold still",
+    "No overshoot on switches and dialogs",
+    "Sounds and focus work as before",
 };
 
 enum class HintMode : std::uint8_t
@@ -442,6 +446,8 @@ class ControlRoom final : public Screen
             return s.reduced_motion ? 1 : 0;
         case Field::resolution:
             return s.resolution;
+        case Field::song_menu:
+            return s.song_menu;
         default:
             return 0;
         }
@@ -482,6 +488,9 @@ class ControlRoom final : public Screen
             s.resolution = next;
             mark_changed("Saved \xC2\xB7 next launch");
             return;
+        case Field::song_menu:
+            s.song_menu = next;
+            break;
         default:
             return;
         }
@@ -1232,9 +1241,11 @@ class ControlRoom final : public Screen
         if (focused)
             list.rounded_rect({cx - kStepperW * 0.5f + 34, cy - 24, kStepperW - 68, 48}, 14,
                               kDeep.with_alpha(0.35f));
-        const char *const *names = field == Field::resolution ? kResolutions : kQualities;
-        draw_changing(list, fonts.semibold, state, names[std::clamp(state.previous, 0, 2)],
-                      names[std::clamp(state.seen, 0, 2)], cx, centred(cy, 28), 28,
+        const char *const *names = field == Field::resolution  ? kResolutions
+                                   : field == Field::song_menu ? kSongMenus
+                                                               : kQualities;
+        draw_changing(list, fonts.semibold, state, names[std::clamp(state.previous, 0, limit(field))],
+                      names[std::clamp(state.seen, 0, limit(field))], cx, centred(cy, 28), 28,
                       focused ? kInk : kInk.with_alpha(0.84f), gfx::Align::center);
         const float nudge = 7.0f * state.press.value * travel();
         const float rest = focused ? 1.0f : 0.5f;
@@ -1371,12 +1382,13 @@ class ControlRoom final : public Screen
     {
         const Rect card = draw_card(list, 3, dy, "WITH REDUCE MOTION ON");
         const float on = tween::clamp01(control(Field::reduce_motion).level.value);
+        // Two columns: the card is short under Display's three rows.
         for (int i = 0; i < 4; ++i)
         {
-            const float y = card.y + 106 + as_float(i) * 50;
-            list.circle(card.x + kRowPad + 6, y - 9, 5,
-                        gfx::mix(kInk.with_alpha(0.3f), kAccent, on));
-            ui::text(list, context_.fonts.regular, kMotionNotes[i], card.x + kRowPad + 30, y, 25,
+            const float x = card.x + kRowPad + as_float(i % 2) * card.w * 0.5f;
+            const float y = card.y + 100 + as_float(i / 2) * 48;
+            list.circle(x + 6, y - 9, 5, gfx::mix(kInk.with_alpha(0.3f), kAccent, on));
+            ui::text(list, context_.fonts.regular, kMotionNotes[i], x + 30, y, 25,
                      kInk.with_alpha(0.68f + 0.26f * on));
         }
     }

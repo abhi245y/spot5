@@ -42,6 +42,7 @@ struct Resolved
     std::vector<std::string> tracks; // all of them, in play order (shuffled if asked)
     bool shuffle = false;
     std::string error; // for the user; set when tracks is empty
+    std::optional<screens::Card> card; // a page whose card comes with it (song radio)
 };
 
 class Browser
@@ -64,6 +65,9 @@ class Browser
     void resolve(const screens::PlayRequest &request);
     // Resolve a card's tracks for its page (take_opened()).
     void open(const std::string &uri);
+    // A track's song radio as a page (take_opened(), context_uri = the track,
+    // card = Spotify's radio playlist).
+    void radio(const std::string &track_uri);
     // Names, artists, covers and durations for these tracks (take_described()).
     void describe(const std::vector<std::string> &uris);
     // Your Library again (take_library()); the cached one is published at once.
@@ -92,7 +96,8 @@ class Browser
         enum class Kind { refresh, resolve, open, describe, library, artist } kind = Kind::refresh;
         bool forget = false;                // refresh
         screens::PlayRequest play;          // resolve
-        std::string uri;                    // open
+        std::string uri;                    // open (a track's URI for radio)
+        bool radio = false;                 // open: the song radio of `uri`
         std::vector<std::string> uris;      // describe
     };
 
@@ -100,6 +105,7 @@ class Browser
     void run();
     void fetch_home();
     Resolved fetch_tracks(const screens::PlayRequest &request);
+    Resolved fetch_radio(const std::string &track_uri);
     void fetch_details(const std::vector<std::string> &uris);
     void fetch_library();
     void fetch_artist(const std::string &uri);

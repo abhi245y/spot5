@@ -272,6 +272,8 @@ screens::Art preview_art(const std::string &url)
     return art;
 }
 
+screens::Settings *g_settings = nullptr; // the beats switch the song menu's look
+
 const std::vector<Beat> &script()
 {
     static const std::vector<Beat> beats = {
@@ -342,6 +344,22 @@ const std::vector<Beat> &script()
         {0.3f, nullptr, 0, nullptr, Direction::down},
         {0.3f, nullptr, 0, nullptr, Direction::down},
         {1.0f, nullptr, 0, "06e-page-list", Direction::down},
+        // The song menu: the side panel, its details, then the pop-up and an
+        // artist pick (this row has two artists).
+        {0.6f, nullptr, action_bit(Action::menu), "06p1-song-menu-panel"},
+        {0.25f, nullptr, 0, nullptr, Direction::down},
+        {0.25f, nullptr, 0, nullptr, Direction::down},
+        {0.25f, nullptr, 0, nullptr, Direction::down},
+        {0.6f, nullptr, action_bit(Action::confirm), "06p2-song-details"},
+        {0.4f, nullptr, action_bit(Action::back)},
+        {0.6f, nullptr, action_bit(Action::back), "06p3-menu-closed"},
+        {0.2f, [](Model &) { g_settings->song_menu = 1; }},
+        {0.6f, nullptr, action_bit(Action::menu), "06p4-song-menu-popup"},
+        {0.25f, nullptr, 0, nullptr, Direction::down},
+        {0.25f, nullptr, 0, nullptr, Direction::down},
+        {0.6f, nullptr, action_bit(Action::confirm), "06p5-popup-artists"},
+        {0.4f, nullptr, action_bit(Action::back)},
+        {0.6f, [](Model &) { g_settings->song_menu = 0; }, action_bit(Action::back)},
         {0.8f, nullptr, action_bit(Action::back), "06e2-back-home"},
         {0.6f, [](Model &m) { m.notice = "This can't be played here yet"; ++m.notice_id; }, 0, "06f-notice"},
         // Library: R1 from Home, filter with R2, sort with Square, open an artist.
@@ -385,6 +403,8 @@ const std::vector<Beat> &script()
         {0.3f, nullptr, 0, nullptr, Direction::down},           // queue
         {0.3f, nullptr, 0, nullptr, Direction::down},
         {0.6f, nullptr, 0, "08c-queue", Direction::down},
+        {0.6f, nullptr, action_bit(Action::menu), "08c2-queue-song-menu"},
+        {0.6f, nullptr, action_bit(Action::back)},
         {0.4f, nullptr, action_bit(Action::back)},              // back to the transport
         {0.6f, nullptr, action_bit(Action::west), "08d-queue-hidden"},
         {0.6f, nullptr, action_bit(Action::west)},
@@ -421,7 +441,11 @@ const std::vector<Beat> &script()
         {0.3f, nullptr, action_bit(Action::back)},              // back to the rail
         {0.3f, nullptr, 0, nullptr, Direction::down},           // Account
         {0.6f, nullptr, 0, "17-account", Direction::none},
-        {0.3f, nullptr, 0, nullptr, Direction::down},           // Display
+        {0.6f, nullptr, 0, "17b-display", Direction::down},     // Display
+        {0.3f, nullptr, action_bit(Action::confirm)},           // into its rows
+        {0.3f, nullptr, 0, nullptr, Direction::down},
+        {0.6f, nullptr, 0, "17c-song-menu-row", Direction::down}, // Song menu
+        {0.3f, nullptr, action_bit(Action::back)},              // back to the rail
         {0.3f, nullptr, 0, nullptr, Direction::down},           // About
         {0.8f, nullptr, 0, "18-about"},
         {0.3f, nullptr, 0, nullptr, Direction::down},           // Quit
@@ -502,6 +526,7 @@ int main(int argc, char **argv)
         return 1;
 
     screens::Settings settings;
+    g_settings = &settings;
     screens::Context context{fonts, settings};
     context.art = preview_art;
     context.console_utc_minutes = 330; // a console set to India

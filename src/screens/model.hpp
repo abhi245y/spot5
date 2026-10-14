@@ -81,6 +81,8 @@ struct TrackRow
     std::string album;
     std::uint32_t duration_ms = 0;
     std::string image; // ~300 px album cover
+    std::string album_uri;           // spotify:album:... (empty if unknown)
+    std::vector<Card> artist_cards;  // each artist, ready to open (uri, name)
 };
 
 // A playlist/album opened from Home: its card and every track (resolved on
@@ -155,6 +157,9 @@ struct PlayRequest
     std::vector<std::string> tracks; // when set: play these (in `uri`'s name) from `index`
 };
 
+// Pages kept for Back (the shell's stack and the controller's visits agree).
+constexpr std::size_t kPageHistory = 12;
+
 // What a screen asks the app for (Context::requests), besides Commands.
 struct Request
 {
@@ -165,6 +170,9 @@ struct Request
         describe, // fetch details for uris (rows on screen without a title)
         seek,     // seek the playing track to ms
         jump,     // play queue track `index` (absolute, Queue::first + row)
+        radio,    // open card.uri's (a track's) song radio as a page, and play it
+        back,     // the page on top closed: show the one under it again
+        home,     // every page closed
     };
     Kind kind = Kind::play;
     PlayRequest play;
@@ -186,6 +194,7 @@ struct Settings
     bool reduced_motion = false;
     int resolution = 2;           // 0: 1080p, 1: 1440p, 2: 4K (the display opens at it on launch)
     std::string timezone;         // IANA name for Home; empty: Automatic (the console's offset)
+    int song_menu = 0;            // the Options menu on a song: 0 side panel, 1 pop-up at the row
 };
 
 // Facts for Control Room's About page.

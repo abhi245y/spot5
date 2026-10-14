@@ -150,6 +150,18 @@ class Controller
     std::set<std::string> described_;
     screens::PlaylistPage page_;
     std::vector<std::string> page_uris_;
+    // Pages replaced by an open, newest last; Back puts them back. One per
+    // page the shell has stacked (Request::Kind::open / back / home).
+    struct Visit
+    {
+        bool artist = false;
+        screens::PlaylistPage page;
+        std::vector<std::string> uris;
+        std::string artist_uri;
+        std::shared_ptr<const screens::ArtistPage> artist_page;
+    };
+    std::vector<Visit> visits_;
+    std::string radio_seed_; // the track whose song radio page is loading, to play when it arrives
     std::vector<std::string> queue_uris_;
     int queue_index_ = -1;
     bool queue_dirty_ = false;

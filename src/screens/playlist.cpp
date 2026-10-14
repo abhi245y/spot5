@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <map>
 #include <set>
 
 #include "core/tween.hpp"
@@ -104,12 +105,20 @@ class Playlist final : public Screen
             return;
         if (page->card.uri != uri_)
         {
-            // A new page: start at Play, list at the top.
+            // A new page starts at Play; one returned to (Back) where it was left.
+            if (!uri_.empty())
+            {
+                if (left_.size() > 32)
+                    left_.clear();
+                left_[uri_] = {zone_, action_, row_};
+            }
             uri_ = page->card.uri;
-            zone_ = Zone::actions;
-            action_ = 0;
-            row_ = 0;
-            scroll_.snap(0.0f);
+            const auto was = left_.find(uri_);
+            const Spot spot = was != left_.end() ? was->second : Spot{};
+            zone_ = spot.zone;
+            action_ = spot.action;
+            row_ = spot.row;
+            scroll_.snap(zone_ == Zone::list ? std::max(0.0f, static_cast<float>(row_) - 1.0f) : 0.0f);
             asked_.clear();
             pill_.snap(focus_rect(*page));
         }
@@ -135,6 +144,9 @@ class Playlist final : public Screen
                 feedback.rumble(0.6f, 0.15f);
             }
         }
+
+        if (zone_ == Zone::list && row_ < rows && input.is_pressed(Action::menu))
+            context_.song_pick = Context::SongPick{page->tracks[static_cast<std::size_t>(row_)], focus_rect(*page)};
 
         // Ask for the details of rows on screen (and a few below) once.
         const int first = std::max(0, static_cast<int>(scroll_.target) - 2);
@@ -494,23 +506,36 @@ class Playlist final : public Screen
     void draw_hints(gfx::DrawList &list, const Model &model, const PlaylistPage &page) const
     {
         style::hint_fade(list); // content scrolled down there fades out before the hints
+        if (context_.song_menu_open)
+            return;
         list.push_opacity(tween::stagger(age_, 5, 0.08f, 0.5f));
         const char *play = zone_ == Zone::list ? "Play from here" : action_ == 1 ? "Shuffle" : "Play";
-        ui::Hint hints[5];
+        ui::Hint hints[6];
         int count = 0;
         if (!page.tracks.empty() || zone_ == Zone::actions)
             hints[count++] = {ui::Button::cross, play};
         if (zone_ == Zone::list)
+        {
             hints[count++] = {ui::Button::l1, "Page", ui::Button::r1};
-        hints[count++] = {ui::Button::circle, "Back"};
+            hints[count++] = {ui::Button::options, "More"};
+        }
+        hints[count++] = {ui::Button::circle, "Back \xC2\xB7 Hold: Home"};
         if (model.has_track)
             hints[count++] = {ui::Button::triangle, "Now Playing"};
         ui::draw_hints(list, context_.fonts, style::hint_style(), hints, count, kRight, true, style::hint_layout());
         list.pop_opacity();
     }
 
+    struct Spot
+    {
+        Zone zone = Zone::actions;
+        int action = 0;
+        int row = 0;
+    };
+
     Context &context_;
     std::string uri_; // the page shown (a new one resets the focus)
+    std::map<std::string, Spot> left_; // where the focus was on pages left behind
     Zone zone_ = Zone::actions;
     int action_ = 0;
     int row_ = 0;
