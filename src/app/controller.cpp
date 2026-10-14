@@ -482,10 +482,36 @@ void Controller::step_browser()
     {
         if (opened->context_uri == page_.card.uri)
         {
+            // A song radio's page becomes Spotify's radio playlist (keeping
+            // the song's cover and name until the playlist has its own).
+            if (opened->card)
+            {
+                screens::Card card = *opened->card;
+                if (card.title.empty())
+                    card.title = page_.card.title;
+                if (card.image.empty())
+                    card.image = page_.card.image;
+                page_.card = std::move(card);
+            }
             page_uris_ = opened->tracks;
             page_.loading = false;
             page_.error = opened->tracks.empty() ? opened->error : std::string();
             publish_page();
+            if (!radio_seed_.empty() && radio_seed_ == opened->context_uri && !page_uris_.empty())
+            {
+                service::Resolved resolved;
+                resolved.context_uri = page_.card.uri;
+                resolved.tracks = page_uris_;
+                rest_.clear();
+                if (session_->play(resolved, rest_, 0))
+                {
+                    rest_context_ = resolved.context_uri;
+                    set_busy("Starting " + page_.card.title, Until::track_change);
+                }
+                else
+                    set_notice("Couldn't start playback");
+            }
+            radio_seed_.clear();
         }
     }
     if (std::vector<screens::TrackRow> rows = browser.take_described(); !rows.empty())
@@ -587,16 +613,17 @@ void Controller::handle_request(const screens::Request &request)
             browser.resolve(request.play);
         }
         {
-            const std::string title = request.play.radio ? "song radio" : title_of(request.play.uri);
+            const std::string title = title_of(request.play.uri);
             set_busy((request.play.shuffle ? "Shuffling " : "Starting ") + (title.empty() ? std::string("playback") : title),
                      Until::track_change);
         }
         break;
     case Kind::open:
+    case Kind::radio:
     {
         // Keep what this page replaces, for Back.
         Visit visit;
-        visit.artist = request.card.uri.rfind("spotify:artist:", 0) == 0;
+        visit.artist = request.kind == Kind::open && request.card.uri.rfind("spotify:artist:", 0) == 0;
         if (visit.artist)
         {
             visit.artist_uri = artist_uri_;
@@ -608,10 +635,11 @@ void Controller::handle_request(const screens::Request &request)
             visit.page = page_;
             visit.uris = page_uris_;
         }
+        const bool visit_artist = visit.artist;
         visits_.push_back(std::move(visit));
         if (visits_.size() > screens::kPageHistory)
             visits_.erase(visits_.begin());
-        if (request.card.uri.rfind("spotify:artist:", 0) == 0)
+        if (visit_artist)
         {
             auto loading = std::make_shared<screens::ArtistPage>();
             loading->card = request.card;
@@ -628,6 +656,14 @@ void Controller::handle_request(const screens::Request &request)
         page_.card = request.card;
         page_uris_.clear();
         publish_page();
+        radio_seed_.clear();
+        if (request.kind == Kind::radio)
+        {
+            radio_seed_ = request.card.uri; // played once its playlist arrives
+            browser.radio(request.card.uri);
+            set_busy("Loading song radio", Until::page_loaded);
+            break;
+        }
         browser.open(request.card.uri);
         set_busy("Loading " + request.card.title, Until::page_loaded);
         break;

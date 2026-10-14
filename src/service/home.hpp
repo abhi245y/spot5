@@ -61,6 +61,9 @@ bool parse_tracks(std::string_view reply, std::map<std::string, screens::TrackRo
 // Returns false if the reply is malformed.
 bool parse_traits(std::string_view reply, Entities &entities, std::int64_t now_ms);
 
+// One URI's metadata as a card.
+screens::Card card_of(const std::string &uri, const Entity &entity);
+
 // Sections + metadata -> the page the screens draw. Items without a title
 // are left out, and so are empty shelves.
 screens::HomePage build_page(const std::vector<Section> &sections, const Entities &entities);

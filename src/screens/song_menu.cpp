@@ -132,9 +132,14 @@ void SongMenu::activate(ui::Feedback &feedback)
     {
     case Act::radio:
     {
+        // A page of its own, as on the phone: the song's cover and name
+        // until Spotify's radio playlist arrives, then it plays.
         Request request;
-        request.play.uri = song_.uri;
-        request.play.radio = true;
+        request.kind = Request::Kind::radio;
+        request.card.uri = song_.uri;
+        request.card.title = song_.title + " Radio";
+        request.card.subtitle = "Playlist \xC2\xB7 Spotify";
+        request.card.image = song_.image;
         context_.requests.push_back(request);
         open_ = false;
         feedback.play(audio::Cue::launch);

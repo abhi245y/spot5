@@ -155,7 +155,6 @@ struct PlayRequest
     bool shuffle = false;
     int index = 0;
     std::vector<std::string> tracks; // when set: play these (in `uri`'s name) from `index`
-    bool radio = false;              // uri is a track: play its song radio
 };
 
 // Pages kept for Back (the shell's stack and the controller's visits agree).
@@ -171,6 +170,7 @@ struct Request
         describe, // fetch details for uris (rows on screen without a title)
         seek,     // seek the playing track to ms
         jump,     // play queue track `index` (absolute, Queue::first + row)
+        radio,    // open card.uri's (a track's) song radio as a page, and play it
         back,     // the page on top closed: show the one under it again
         home,     // every page closed
     };

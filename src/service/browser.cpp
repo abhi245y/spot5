@@ -175,6 +175,17 @@ void Browser::open(const std::string &uri)
     wake_.notify_all();
 }
 
+void Browser::radio(const std::string &track_uri)
+{
+    Job job;
+    job.kind = Job::Kind::open;
+    job.uri = track_uri;
+    job.radio = true;
+    std::scoped_lock guard(lock_);
+    jobs_.push_back(std::move(job));
+    wake_.notify_all();
+}
+
 void Browser::describe(const std::vector<std::string> &uris)
 {
     Job job;
@@ -309,8 +320,8 @@ void Browser::run()
             }
             case Job::Kind::open:
             {
-                Resolved opened = fetch_tracks({job.uri, false});
-                opened.context_uri = job.uri; // the card's own URI (Liked Songs)
+                Resolved opened = job.radio ? fetch_radio(job.uri) : fetch_tracks({job.uri, false});
+                opened.context_uri = job.uri; // the card's own URI (Liked Songs), or the radio's track
                 std::scoped_lock guard(lock_);
                 opened_ = std::move(opened);
                 break;
@@ -527,35 +538,50 @@ void Browser::fetch_details(const std::vector<std::string> &uris)
     }
 }
 
+Resolved Browser::fetch_radio(const std::string &track_uri)
+{
+    // Song radio, as the phone makes it: the track's inspired-by mix is a
+    // generated playlist, shown as a page and played from there.
+    const Reply reply =
+        call(*keys_, "inspiredby-mix/v2/seed_to_playlist/" + track_uri + "?response-format=json", "application/json");
+    const auto json = nlohmann::json::parse(reply.body, nullptr, false);
+    std::string mix;
+    if (reply.status == 200 && json.is_object() && json.contains("mediaItems"))
+        for (const auto &item : json["mediaItems"])
+            if (item.is_object() && item.value("uri", "").rfind("spotify:playlist:", 0) == 0)
+            {
+                mix = item.value("uri", "");
+                break;
+            }
+    hui::sys::log("[HOME] song radio %s -> HTTP %d, %s", track_uri.c_str(), reply.status,
+                  mix.empty() ? reply.body.substr(0, 300).c_str() : mix.c_str());
+    if (mix.empty())
+    {
+        Resolved failed;
+        failed.error = "Couldn't start the song radio. Try again in a moment.";
+        return failed;
+    }
+    screens::PlayRequest playlist;
+    playlist.uri = mix;
+    Resolved resolved = fetch_tracks(playlist);
+    // Its title and radio artwork.
+    const std::string request = home::metadata_request({mix}, ctx_->config.countryCode);
+    const Reply traits = call(*keys_, "extended-metadata/v0/extended-metadata", "application/protobuf", &request);
+    home::Entities entities;
+    if (traits.status == 200 && home::parse_traits(traits.body, entities, now_ms()) && entities.count(mix) &&
+        !entities[mix].title.empty())
+        resolved.card = home::card_of(mix, entities[mix]);
+    else
+    {
+        resolved.card = screens::Card{};
+        resolved.card->uri = mix;
+    }
+    return resolved;
+}
+
 Resolved Browser::fetch_tracks(const screens::PlayRequest &request)
 {
     Resolved resolved;
-    if (request.radio)
-    {
-        // Song radio, as the phone makes it: the track's inspired-by mix, a
-        // generated playlist that is then played like any other.
-        const Reply reply =
-            call(*keys_, "inspiredby-mix/v2/seed_to_playlist/" + request.uri + "?response-format=json", "application/json");
-        const auto json = nlohmann::json::parse(reply.body, nullptr, false);
-        std::string mix;
-        if (reply.status == 200 && json.is_object() && json.contains("mediaItems"))
-            for (const auto &item : json["mediaItems"])
-                if (item.is_object() && item.value("uri", "").rfind("spotify:playlist:", 0) == 0)
-                {
-                    mix = item.value("uri", "");
-                    break;
-                }
-        hui::sys::log("[HOME] song radio %s -> HTTP %d, %s", request.uri.c_str(), reply.status,
-                      mix.empty() ? reply.body.substr(0, 300).c_str() : mix.c_str());
-        if (mix.empty())
-        {
-            resolved.error = "Couldn't start the song radio. Try again in a moment.";
-            return resolved;
-        }
-        screens::PlayRequest playlist;
-        playlist.uri = mix;
-        return fetch_tracks(playlist);
-    }
     resolved.context_uri =
         library::playable_uri(home::playable_uri(request.uri, ctx_->config.username), ctx_->config.username);
     resolved.shuffle = request.shuffle;

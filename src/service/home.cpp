@@ -287,6 +287,20 @@ bool parse_tracks(std::string_view reply, std::map<std::string, screens::TrackRo
     return kinds.ok();
 }
 
+screens::Card card_of(const std::string &uri, const Entity &entity)
+{
+    screens::Card card;
+    card.uri = uri;
+    card.title = entity.title;
+    card.subtitle = subtitle(entity);
+    card.description = entity.description;
+    card.image = !entity.images[1].empty() ? entity.images[1] : entity.images[2];
+    card.image_large = larger_cover(!entity.images[2].empty() ? entity.images[2] : card.image);
+    card.wide = entity.wide;
+    card.round = entity.type == "Artist";
+    return card;
+}
+
 screens::HomePage build_page(const std::vector<Section> &sections, const Entities &entities)
 {
     screens::HomePage page;
@@ -300,17 +314,7 @@ screens::HomePage build_page(const std::vector<Section> &sections, const Entitie
             const auto found = entities.find(uri);
             if (found == entities.end() || found->second.title.empty())
                 continue;
-            const Entity &entity = found->second;
-            screens::Card card;
-            card.uri = uri;
-            card.title = entity.title;
-            card.subtitle = subtitle(entity);
-            card.description = entity.description;
-            card.image = !entity.images[1].empty() ? entity.images[1] : entity.images[2];
-            card.image_large = larger_cover(!entity.images[2].empty() ? entity.images[2] : card.image);
-            card.wide = entity.wide;
-            card.round = entity.type == "Artist";
-            shelf.cards.push_back(std::move(card));
+            shelf.cards.push_back(card_of(uri, found->second));
         }
         if (!shelf.cards.empty() && (shelf.shortcuts || !shelf.title.empty()))
             page.shelves.push_back(std::move(shelf));

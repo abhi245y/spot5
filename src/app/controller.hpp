@@ -161,6 +161,7 @@ class Controller
         std::shared_ptr<const screens::ArtistPage> artist_page;
     };
     std::vector<Visit> visits_;
+    std::string radio_seed_; // the track whose song radio page is loading, to play when it arrives
     std::vector<std::string> queue_uris_;
     int queue_index_ = -1;
     bool queue_dirty_ = false;

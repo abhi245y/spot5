@@ -249,7 +249,7 @@ void Shell::update(const Model &model, const InputFrame &input, float dt, ui::Fe
         // Cross on a card (or the song menu) asked for a page: an artist's
         // or a list's. From Now Playing, the page comes up in its place.
         for (const Request &request : context_.requests)
-            if (request.kind == Request::Kind::open)
+            if (request.kind == Request::Kind::open || request.kind == Request::Kind::radio)
             {
                 const Id next = request.card.uri.rfind("spotify:artist:", 0) == 0 ? Id::artist : Id::page;
                 // Every open stacks (a page over a page too): the
