@@ -135,6 +135,7 @@ class Controller
     std::unique_ptr<service::Session> session_;
     std::unique_ptr<service::Pairing> pairing_; // only in Pairing (and the login after it)
     std::int64_t reconnect_started_ms_ = 0;
+    std::int64_t hold_play_until_ms_ = 0; // after a pairing login: the phone's first play lands paused
     std::int64_t home_asked_ms_ = 0; // last refresh request, to keep calls rare
     std::int64_t artwork_since_ms_ = 0; // launch: when Step::artwork began
     std::int64_t library_asked_ms_ = 0; // last library request, to keep calls rare

@@ -196,6 +196,16 @@ void Session::set_paused(bool paused)
     handler_->setPause(paused);
 }
 
+void Session::hold_play(bool hold)
+{
+    player_->hold_play(hold);
+}
+
+bool Session::take_held_play()
+{
+    return player_->take_held_play();
+}
+
 void Session::next()
 {
     handler_->nextSong();
