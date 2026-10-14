@@ -441,7 +441,11 @@ const std::vector<Beat> &script()
         {0.3f, nullptr, action_bit(Action::back)},              // back to the rail
         {0.3f, nullptr, 0, nullptr, Direction::down},           // Account
         {0.6f, nullptr, 0, "17-account", Direction::none},
-        {0.3f, nullptr, 0, nullptr, Direction::down},           // Display
+        {0.6f, nullptr, 0, "17b-display", Direction::down},     // Display
+        {0.3f, nullptr, action_bit(Action::confirm)},           // into its rows
+        {0.3f, nullptr, 0, nullptr, Direction::down},
+        {0.6f, nullptr, 0, "17c-song-menu-row", Direction::down}, // Song menu
+        {0.3f, nullptr, action_bit(Action::back)},              // back to the rail
         {0.3f, nullptr, 0, nullptr, Direction::down},           // About
         {0.8f, nullptr, 0, "18-about"},
         {0.3f, nullptr, 0, nullptr, Direction::down},           // Quit

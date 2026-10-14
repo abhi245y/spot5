@@ -68,7 +68,7 @@ std::string length_text(std::uint32_t ms)
 
 } // namespace
 
-void SongMenu::open(const TrackRow &song, const gfx::Rect &anchor, ui::Feedback &feedback)
+void SongMenu::open(const TrackRow &song, const gfx::Rect &anchor, bool panel, ui::Feedback &feedback)
 {
     if (song.title.empty())
         return; // details still on their way: nothing to offer yet
@@ -82,7 +82,7 @@ void SongMenu::open(const TrackRow &song, const gfx::Rect &anchor, ui::Feedback 
     if (!song.artist_cards.empty())
         acts_.push_back(Act::artist);
     acts_.push_back(Act::details);
-    popup_ = context_.settings.song_menu == 1;
+    popup_ = !panel && context_.settings.song_menu == 1;
     open_ = true;
     show(View::actions);
     if (amount_.value < 0.01f)

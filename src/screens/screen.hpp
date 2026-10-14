@@ -74,6 +74,7 @@ struct Context
     {
         TrackRow song;
         gfx::Rect anchor;
+        bool panel = false; // the side panel whatever the setting (Now Playing's own song)
     };
     std::optional<SongPick> song_pick;
     bool song_menu_open = false; // set by the shell: screens leave their hints to the menu

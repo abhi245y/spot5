@@ -19,7 +19,8 @@ class SongMenu
     explicit SongMenu(Context &context) : context_(context) {}
 
     // anchor: the song's row on screen (the pop-up points at it).
-    void open(const TrackRow &song, const gfx::Rect &anchor, ui::Feedback &feedback);
+    // panel: the side panel even when the setting asks for the pop-up.
+    void open(const TrackRow &song, const gfx::Rect &anchor, bool panel, ui::Feedback &feedback);
     // Closes at once, without a sound (the screen changed under it).
     void dismiss()
     {

@@ -243,7 +243,7 @@ void Shell::update(const Model &model, const InputFrame &input, float dt, ui::Fe
         if (context_.song_pick)
         {
             if (!picking)
-                song_menu_.open(context_.song_pick->song, context_.song_pick->anchor, feedback);
+                song_menu_.open(context_.song_pick->song, context_.song_pick->anchor, context_.song_pick->panel, feedback);
             context_.song_pick.reset();
         }
         // Cross on a card (or the song menu) asked for a page: an artist's

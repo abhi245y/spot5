@@ -150,7 +150,7 @@ constexpr Row kDisplayRows[] = {
      Kind::stepper, Field::resolution},
     {"Reduce motion", "Replaces slides, zooms and overshoot with short fades.", Kind::toggle,
      Field::reduce_motion},
-    {"Song menu", "What Options on a song opens: a panel from the right edge, or a pop-up next to the song.",
+    {"Song menu", "How Options on a song opens its menu: a panel from the right edge, or a pop-up at the song.",
      Kind::stepper, Field::song_menu},
 };
 constexpr Row kAboutRows[] = {
@@ -181,10 +181,10 @@ constexpr const char *kResolutions[] = {"1080p", "1440p", "4K"};
 constexpr const char *kSongMenus[] = {"Side panel", "Pop-up"};
 constexpr const char *kQualityNames[] = {"Normal", "High", "Very high"};
 constexpr const char *kMotionNotes[] = {
-    "Screens and panels fade instead of sliding",
-    "The backdrops and the idle glows hold still",
-    "Switches and dialogs settle without overshoot",
-    "Sounds and the focus highlight work exactly as before",
+    "Screens fade instead of sliding",
+    "Backdrops and glows hold still",
+    "No overshoot on switches and dialogs",
+    "Sounds and focus work as before",
 };
 
 enum class HintMode : std::uint8_t
@@ -1382,12 +1382,13 @@ class ControlRoom final : public Screen
     {
         const Rect card = draw_card(list, 3, dy, "WITH REDUCE MOTION ON");
         const float on = tween::clamp01(control(Field::reduce_motion).level.value);
+        // Two columns: the card is short under Display's three rows.
         for (int i = 0; i < 4; ++i)
         {
-            const float y = card.y + 106 + as_float(i) * 50;
-            list.circle(card.x + kRowPad + 6, y - 9, 5,
-                        gfx::mix(kInk.with_alpha(0.3f), kAccent, on));
-            ui::text(list, context_.fonts.regular, kMotionNotes[i], card.x + kRowPad + 30, y, 25,
+            const float x = card.x + kRowPad + as_float(i % 2) * card.w * 0.5f;
+            const float y = card.y + 100 + as_float(i / 2) * 48;
+            list.circle(x + 6, y - 9, 5, gfx::mix(kInk.with_alpha(0.3f), kAccent, on));
+            ui::text(list, context_.fonts.regular, kMotionNotes[i], x + 30, y, 25,
                      kInk.with_alpha(0.68f + 0.26f * on));
         }
     }

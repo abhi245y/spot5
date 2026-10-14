@@ -433,7 +433,8 @@ class NowPlaying final : public Screen
                     song.image = model.track.image_url;
                 }
                 const Layout l = layout();
-                context_.song_pick = Context::SongPick{song, {l.column_x - 20, 230, l.column_w + 40, 140}};
+                // A pop-up over the big title looks lost: this one is always the panel.
+                context_.song_pick = Context::SongPick{song, {l.column_x - 20, 230, l.column_w + 40, 140}, true};
             }
         }
         if (input.is_pressed(Action::west) && queue_ptr_)

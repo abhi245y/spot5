@@ -532,28 +532,29 @@ Resolved Browser::fetch_tracks(const screens::PlayRequest &request)
     Resolved resolved;
     if (request.radio)
     {
-        // Song radio, as the phone makes it: a mix seeded by the track
-        // (inspiredby-mix), played as that track's station.
-        const std::string id = request.uri.substr(request.uri.rfind(':') + 1);
-        resolved.context_uri = "spotify:station:track:" + id;
+        // Song radio, as the phone makes it: the track's inspired-by mix, a
+        // generated playlist that is then played like any other.
         const Reply reply =
             call(*keys_, "inspiredby-mix/v2/seed_to_playlist/" + request.uri + "?response-format=json", "application/json");
         const auto json = nlohmann::json::parse(reply.body, nullptr, false);
+        std::string mix;
         if (reply.status == 200 && json.is_object() && json.contains("mediaItems"))
             for (const auto &item : json["mediaItems"])
-            {
-                const std::string uri = item.is_object() ? item.value("uri", "") : "";
-                if (uri.rfind("spotify:track:", 0) == 0)
-                    resolved.tracks.push_back(uri);
-            }
-        // The station starts with its seed, as on the phone.
-        if (!resolved.tracks.empty() && resolved.tracks.front() != request.uri)
-            resolved.tracks.insert(resolved.tracks.begin(), request.uri);
-        if (resolved.tracks.empty())
+                if (item.is_object() && item.value("uri", "").rfind("spotify:playlist:", 0) == 0)
+                {
+                    mix = item.value("uri", "");
+                    break;
+                }
+        hui::sys::log("[HOME] song radio %s -> HTTP %d, %s", request.uri.c_str(), reply.status,
+                      mix.empty() ? reply.body.substr(0, 300).c_str() : mix.c_str());
+        if (mix.empty())
+        {
             resolved.error = "Couldn't start the song radio. Try again in a moment.";
-        hui::sys::log("[HOME] song radio %s -> HTTP %d, %zu tracks", request.uri.c_str(), reply.status,
-                      resolved.tracks.size());
-        return resolved;
+            return resolved;
+        }
+        screens::PlayRequest playlist;
+        playlist.uri = mix;
+        return fetch_tracks(playlist);
     }
     resolved.context_uri =
         library::playable_uri(home::playable_uri(request.uri, ctx_->config.username), ctx_->config.username);
