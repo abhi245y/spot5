@@ -43,8 +43,9 @@ struct Cover
 };
 
 // Deletes every saved cover in `dir` (those its index lists, and any the
-// directory listing shows). Returns how many files went.
-int clear_cover_cache(const std::string &dir);
+// directory listing shows) on a thread of its own: hundreds of deletions take
+// over a second, which the draw thread must not wait for.
+void clear_cover_cache(const std::string &dir);
 
 class CoverLoader
 {
