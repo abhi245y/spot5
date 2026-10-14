@@ -5,7 +5,7 @@
 <h1 align="center">Spot5</h1>
 
 <p align="center">
-  A native, standalone Spotify app for jailbroken PlayStation 5 consoles.<br>
+  An unofficial, native, standalone Spotify app for jailbroken PlayStation 5 consoles.<br>
   Browse and play your music on the TV with the controller — no PSN, and no phone needed after the first login.
 </p>
 
