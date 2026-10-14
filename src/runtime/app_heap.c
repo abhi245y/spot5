@@ -125,7 +125,11 @@ static int hui_heap_ready(void)
     /* Escape hatch: an empty file /app0/heap-flexible (put there over FTP)
      * keeps the heap in flexible memory, in case direct memory ever stops
      * the app from starting. */
-    void *base = access("/app0/heap-flexible", F_OK) == 0 ? MAP_FAILED : hui_heap_map_direct(kDirectHeapSize);
+    /* fopen, not access(): access() reports files under /app0 missing on the console. */
+    FILE *flexible = fopen("/app0/heap-flexible", "rb");
+    if (flexible)
+        fclose(flexible);
+    void *base = flexible ? MAP_FAILED : hui_heap_map_direct(kDirectHeapSize);
     if (base != MAP_FAILED)
     {
         hui_heap_size = kDirectHeapSize;
