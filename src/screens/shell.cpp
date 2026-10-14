@@ -26,7 +26,7 @@ namespace screens
 
 // The touchpad: released within kTapSeconds it is a tap; held kQuitSeconds, it quits.
 constexpr float kTapSeconds = 0.3f;
-constexpr float kQuitSeconds = 6.0f;
+constexpr float kQuitSeconds = 3.0f;
 
 namespace
 {

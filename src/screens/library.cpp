@@ -693,7 +693,7 @@ class LibraryScreen final : public Screen
             hints[count++] = {ui::Button::triangle, "Now Playing"};
         hints[count++] = {ui::Button::l1, "Home", ui::Button::r1};
         hints[count++] = {ui::Button::right_stick, "Refresh"};
-        hints[count++] = {ui::Button::touchpad, "Settings"};
+        hints[count++] = {ui::Button::touchpad, "Settings \xC2\xB7 Hold to quit"};
         ui::draw_hints(list, context_.fonts, ui::GlyphStyle::dark(), hints, count, kRight, true);
         list.pop_opacity();
     }

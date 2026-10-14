@@ -425,7 +425,7 @@ const std::vector<Beat> &script()
         {0.3f, nullptr, action_bit(Action::back)},              // rail
         {0.8f, nullptr, action_bit(Action::back), "20-back-to-playing"},
         // Holding the touchpad: the quit ring fills; let go before 6 s and it fades.
-        {2.5f, nullptr, 0, "21-hold-to-quit", Direction::none, action_bit(Action::touch)},
+        {1.5f, nullptr, 0, "21-hold-to-quit", Direction::none, action_bit(Action::touch)},
         {0.4f, nullptr, 0, "21b-hold-released"},
     };
     return beats;
