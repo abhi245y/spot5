@@ -340,12 +340,24 @@ void Controller::start_session(std::shared_ptr<cspot::LoginBlob> login)
         set_state(State::Error, error);
         return;
     }
-    session_ = service::Session::start(config, settings_, timezone(), std::move(login), error,
-                                       [this](service::Session::Stage stage) {
-                                           set_step(stage == service::Session::Stage::connecting
-                                                        ? screens::Step::connect
-                                                        : screens::Step::start);
-                                       });
+    // The first connect after launch often fails (the console's network is
+    // not ready yet) and works a moment later: retry quietly before saying so.
+    constexpr int kConnectTries = 3;
+    for (int attempt = 1;; ++attempt)
+    {
+        error.clear();
+        session_ = service::Session::start(config, settings_, timezone(), login, error,
+                                           [this](service::Session::Stage stage) {
+                                               set_step(stage == service::Session::Stage::connecting
+                                                            ? screens::Step::connect
+                                                            : screens::Step::start);
+                                           });
+        if (session_ || attempt == kConnectTries || error.rfind(service::Session::kUnreachable, 0) != 0)
+            break;
+        hui::sys::log("[APP] connect attempt %d of %d failed (%s); retrying", attempt, kConnectTries,
+                      error.c_str());
+        hui::sys::sleep_us(2000000);
+    }
     if (!session_)
     {
         set_state(State::Error, error);

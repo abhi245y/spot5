@@ -52,7 +52,7 @@ std::unique_ptr<Session> Session::start(const app::Config &config,
     }
     catch (const std::exception &e)
     {
-        error = std::string("Could not reach Spotify (") + e.what() + ")";
+        error = std::string(kUnreachable) + " (" + e.what() + ")";
         return nullptr;
     }
 

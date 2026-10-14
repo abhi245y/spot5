@@ -38,6 +38,9 @@ class Session
     // (the console needs pairing). Throws if the file is unreadable JSON.
     static std::shared_ptr<cspot::LoginBlob> saved_login(const std::string &device_name);
 
+    // How start()'s error begins when the network, not the login, failed.
+    static constexpr const char *kUnreachable = "Could not reach Spotify";
+
     // Logs in (saved login or one from pairing), saves the refreshed
     // credential and starts Spotify Connect, reporting each stage. Returns
     // nullptr and sets `error` (a message for the user) on failure.
